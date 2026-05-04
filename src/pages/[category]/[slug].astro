@@ -1,0 +1,31 @@
+---
+import Header from '@/components/Header.astro';
+import DocShell from '@/components/DocShell.astro';
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import { allDocs, getDoc, getDocsByCategory, type DocCategory } from '@/lib/docs';
+
+export function getStaticPaths() {
+  return allDocs.map((doc) => ({
+    params: {
+      category: doc.category,
+      slug: doc.slug,
+    },
+  }));
+}
+
+const { category, slug } = Astro.params as { category: DocCategory; slug: string };
+const doc = getDoc(category, slug);
+
+if (!doc) {
+  return Astro.redirect('/404');
+}
+
+const docs = getDocsByCategory(category);
+---
+
+<BaseLayout title={doc.subtitle || doc.title} description={doc.description}>
+  <Header active={doc.category} />
+  <main class="page doc-page">
+    <DocShell doc={doc} docs={docs} />
+  </main>
+</BaseLayout>

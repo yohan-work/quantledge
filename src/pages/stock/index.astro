@@ -1,0 +1,22 @@
+---
+import Header from '@/components/Header.astro';
+import SearchBox from '@/components/SearchBox.astro';
+import DocList from '@/components/DocList.astro';
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import { stockDocs } from '@/lib/docs';
+---
+
+<BaseLayout title="주식">
+  <Header active="stock" />
+  <main class="page">
+    <section class="category-hero">
+      <div>
+        <p class="eyebrow">Stock Basics</p>
+        <h1>주식</h1>
+        <p>매매 용어, 차트, 재무제표, 핵심 지표, 투자 성과지표를 단계적으로 정리합니다.</p>
+      </div>
+      <SearchBox />
+    </section>
+    <DocList docs={stockDocs} />
+  </main>
+</BaseLayout>

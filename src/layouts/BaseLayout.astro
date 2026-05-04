@@ -1,0 +1,27 @@
+---
+import '../styles/global.css';
+
+type Props = {
+  title?: string;
+  description?: string;
+};
+
+const {
+  title = 'Quantledge',
+  description = '주식과 퀀트 개념을 단계별로 정리하는 학습 아카이브',
+} = Astro.props;
+const pageTitle = title === 'Quantledge' ? title : `${title} | Quantledge`;
+---
+
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="description" content={description} />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{pageTitle}</title>
+  </head>
+  <body>
+    <slot />
+  </body>
+</html>

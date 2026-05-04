@@ -1,0 +1,38 @@
+---
+import Header from '@/components/Header.astro';
+import SearchBox from '@/components/SearchBox.astro';
+import DocList from '@/components/DocList.astro';
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import { allDocs, quantDocs, stockDocs } from '@/lib/docs';
+---
+
+<BaseLayout>
+  <Header active="home" />
+  <main class="page">
+    <section class="home-hero">
+      <div>
+        <p class="eyebrow">Stock & Quant Archive</p>
+        <h1>Knowledge Base for Stock & Quant</h1>
+        <p>
+          Learn the basic concepts of stock and quant investment through a structured approach.
+        </p>
+      </div>
+    </section>
+
+    <section>
+      <SearchBox />
+    </section>
+
+    <section class="section-head">
+      <div>
+        <p class="eyebrow">Learning Path</p>
+        <h2>현재 문서</h2>
+      </div>
+      <div class="stats">
+        <span>{stockDocs.length} 주식</span>
+        <span>{quantDocs.length} 퀀트</span>
+      </div>
+    </section>
+    <DocList docs={allDocs} />
+  </main>
+</BaseLayout>
