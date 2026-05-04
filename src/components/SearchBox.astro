@@ -1,19 +1,30 @@
 ---
 import { searchIndex } from '@/lib/docs';
+
+type Props = {
+  compact?: boolean;
+  label?: string;
+  placeholder?: string;
+};
+
+const {
+  compact = false,
+  label = '개념 검색',
+  placeholder = 'PER, MDD, 매수, 백테스트',
+} = Astro.props;
 ---
 
-<section class="search-panel" aria-label="문서 검색">
-  <label class="search-label" for="doc-search">개념 검색</label>
+<section class:list={['search-panel', compact && 'search-panel-compact']} aria-label="문서 검색" data-search-root>
+  <label class="search-label">
+    {label}
+  </label>
   <div class="search-control">
-    <input id="doc-search" type="search" placeholder="PER, MDD, 매수, 백테스트" autocomplete="off" />
+    <input type="search" placeholder={placeholder} autocomplete="off" data-search-input />
   </div>
-  <div class="search-results" id="search-results" aria-live="polite"></div>
+  <div class="search-results" aria-live="polite" data-search-results></div>
 </section>
 
 <script define:vars={{ searchIndex }}>
-  const input = document.querySelector('#doc-search');
-  const results = document.querySelector('#search-results');
-
   const escapeHtml = (value) =>
     value
       .replaceAll('&', '&amp;')
@@ -35,7 +46,7 @@ import { searchIndex } from '@/lib/docs';
     return `${prefix}${text.slice(start, end)}${suffix}`;
   };
 
-  const renderResults = (items) => {
+  const renderResults = (items, results) => {
     if (!results) return;
 
     if (!items.length) {
@@ -57,35 +68,45 @@ import { searchIndex } from '@/lib/docs';
       .join('');
   };
 
-  input?.addEventListener('input', (event) => {
-    const query = event.target.value.trim().toLowerCase();
+  document.querySelectorAll('[data-search-root]').forEach((root) => {
+    if (root.dataset.searchInitialized) return;
+    root.dataset.searchInitialized = 'true';
 
-    if (!query) {
-      results.innerHTML = '';
-      return;
-    }
+    const input = root.querySelector('[data-search-input]');
+    const results = root.querySelector('[data-search-results]');
 
-    const items = searchIndex
-      .map((item) => {
-        const lowerTitle = item.sectionTitle.toLowerCase();
-        const lowerSubtitle = item.subtitle.toLowerCase();
-        const lowerSearchText = item.searchText.toLowerCase();
+    input?.addEventListener('input', (event) => {
+      const query = event.target.value.trim().toLowerCase();
 
-        if (!lowerSearchText.includes(query)) return null;
+      if (!query) {
+        results.innerHTML = '';
+        root.classList.remove('search-open');
+        return;
+      }
 
-        return {
-          ...item,
-          score:
-            (lowerTitle.includes(query) ? 30 : 0) +
-            (lowerSubtitle.includes(query) ? 15 : 0) +
-            (item.sourcePath.toLowerCase().includes(query) ? 8 : 0),
-          matchedExcerpt: getExcerpt(item, query),
-        };
-      })
-      .filter(Boolean)
-      .sort((a, b) => b.score - a.score || a.chapter - b.chapter)
-      .slice(0, 6);
+      const items = searchIndex
+        .map((item) => {
+          const lowerTitle = item.sectionTitle.toLowerCase();
+          const lowerSubtitle = item.subtitle.toLowerCase();
+          const lowerSearchText = item.searchText.toLowerCase();
 
-    renderResults(items);
+          if (!lowerSearchText.includes(query)) return null;
+
+          return {
+            ...item,
+            score:
+              (lowerTitle.includes(query) ? 30 : 0) +
+              (lowerSubtitle.includes(query) ? 15 : 0) +
+              (item.sourcePath.toLowerCase().includes(query) ? 8 : 0),
+            matchedExcerpt: getExcerpt(item, query),
+          };
+        })
+        .filter(Boolean)
+        .sort((a, b) => b.score - a.score || a.chapter - b.chapter)
+        .slice(0, 6);
+
+      renderResults(items, results);
+      root.classList.add('search-open');
+    });
   });
 </script>

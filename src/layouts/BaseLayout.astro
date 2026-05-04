@@ -23,5 +23,8 @@ const pageTitle = title === 'Quantledge' ? title : `${title} | Quantledge`;
   </head>
   <body>
     <slot />
+    <footer class="site-footer">
+      <span>© {new Date().getFullYear()} Yohan Choi</span>
+    </footer>
   </body>
 </html>
