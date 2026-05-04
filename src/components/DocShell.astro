@@ -1,0 +1,47 @@
+---
+import type { StudyDoc } from '@/lib/docs';
+
+type Props = {
+  doc: StudyDoc;
+  docs: StudyDoc[];
+};
+
+const { doc, docs } = Astro.props;
+const toc = doc.headings.filter((heading) => heading.depth >= 1 && heading.depth <= 2);
+---
+
+<div class="doc-shell">
+  <aside class="doc-side" aria-label="문서 목록">
+    <span class="side-label">{doc.categoryLabel}</span>
+    <nav>
+      {
+        docs.map((item) => (
+          <a class:list={['side-link', item.href === doc.href && 'active']} href={item.href}>
+            <span>{item.chapter}장</span>
+            {item.subtitle}
+          </a>
+        ))
+      }
+    </nav>
+  </aside>
+
+  <article class="article">
+    <div class="article-kicker">{doc.categoryLabel} · {doc.readingMinutes}분 읽기</div>
+    <h1>{doc.title}</h1>
+    <p class="article-subtitle">{doc.subtitle}</p>
+    <div class="article-body" set:html={doc.html} />
+  </article>
+
+  <aside class="toc" aria-label="문서 목차">
+    <span class="side-label">목차</span>
+    <nav>
+      {
+        toc.map((heading) => (
+          <a class:list={[`depth-${heading.depth}`]} href={`#${heading.id}`}>
+            {heading.text}
+          </a>
+        ))
+      }
+    </nav>
+  </aside>
+</div>

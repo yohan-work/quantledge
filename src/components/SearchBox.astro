@@ -1,0 +1,52 @@
+---
+import { searchIndex } from '@/lib/docs';
+---
+
+<section class="search-panel" aria-label="문서 검색">
+  <label class="search-label" for="doc-search">개념 검색</label>
+  <div class="search-control">
+    <input id="doc-search" type="search" placeholder="PER, MDD, 매수, 백테스트" autocomplete="off" />
+  </div>
+  <div class="search-results" id="search-results" aria-live="polite"></div>
+</section>
+
+<script define:vars={{ searchIndex }}>
+  const input = document.querySelector('#doc-search');
+  const results = document.querySelector('#search-results');
+
+  const renderResults = (items) => {
+    if (!results) return;
+
+    if (!items.length) {
+      results.innerHTML = '<p class="search-empty">일치하는 문서가 없습니다.</p>';
+      return;
+    }
+
+    results.innerHTML = items
+      .map(
+        (item) => `
+          <a class="search-result" href="${item.href}">
+            <span>${item.categoryLabel}</span>
+            <strong>${item.title}</strong>
+            <small>${item.subtitle}</small>
+          </a>
+        `,
+      )
+      .join('');
+  };
+
+  input?.addEventListener('input', (event) => {
+    const query = event.target.value.trim().toLowerCase();
+
+    if (!query) {
+      results.innerHTML = '';
+      return;
+    }
+
+    const items = searchIndex
+      .filter((item) => item.searchText.toLowerCase().includes(query))
+      .slice(0, 6);
+
+    renderResults(items);
+  });
+</script>

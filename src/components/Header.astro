@@ -1,0 +1,27 @@
+---
+type Props = {
+  active?: 'home' | 'stock' | 'quant';
+};
+
+const { active = 'home' } = Astro.props;
+const navItems = [
+  { href: '/stock/', label: '주식', key: 'stock' },
+  { href: '/quant/', label: '퀀트', key: 'quant' },
+];
+---
+
+<header class="site-header">
+  <a class="brand" href="/" aria-label="Quantledge 홈">
+    <span class="brand-mark"></span>
+    <span>Quantledge</span>
+  </a>
+  <nav class="site-nav" aria-label="주요 메뉴">
+    {
+      navItems.map((item) => (
+        <a class:list={['nav-link', active === item.key && 'active']} href={item.href}>
+          {item.label}
+        </a>
+      ))
+    }
+  </nav>
+</header>

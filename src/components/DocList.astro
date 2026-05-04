@@ -1,0 +1,14 @@
+---
+import DocCard from './DocCard.astro';
+import type { StudyDoc } from '@/lib/docs';
+
+type Props = {
+  docs: StudyDoc[];
+};
+
+const { docs } = Astro.props;
+---
+
+<div class="doc-grid">
+  {docs.map((doc) => <DocCard doc={doc} />)}
+</div>

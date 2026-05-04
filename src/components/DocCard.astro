@@ -1,0 +1,16 @@
+---
+import type { StudyDoc } from '@/lib/docs';
+
+type Props = {
+  doc: StudyDoc;
+};
+
+const { doc } = Astro.props;
+---
+
+<a class="doc-card" href={doc.href}>
+  <span class="doc-card-meta">{doc.categoryLabel} · {doc.readingMinutes}분</span>
+  <strong>{doc.title}</strong>
+  <span>{doc.subtitle}</span>
+  <p>{doc.description}</p>
+</a>
