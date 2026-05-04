@@ -14,6 +14,27 @@ import { searchIndex } from '@/lib/docs';
   const input = document.querySelector('#doc-search');
   const results = document.querySelector('#search-results');
 
+  const escapeHtml = (value) =>
+    value
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;');
+
+  const getExcerpt = (item, query) => {
+    const text = item.excerpt || item.searchText;
+    const index = text.toLowerCase().indexOf(query);
+
+    if (index < 0) return text.slice(0, 120);
+
+    const start = Math.max(0, index - 42);
+    const end = Math.min(text.length, index + query.length + 78);
+    const prefix = start > 0 ? '...' : '';
+    const suffix = end < text.length ? '...' : '';
+
+    return `${prefix}${text.slice(start, end)}${suffix}`;
+  };
+
   const renderResults = (items) => {
     if (!results) return;
 
@@ -26,9 +47,10 @@ import { searchIndex } from '@/lib/docs';
       .map(
         (item) => `
           <a class="search-result" href="${item.href}">
-            <span>${item.categoryLabel}</span>
-            <strong>${item.title}</strong>
-            <small>${item.subtitle}</small>
+            <span class="search-result-path">${escapeHtml(item.sourcePath)} · ${item.chapter}장 · ${escapeHtml(item.categoryLabel)}</span>
+            <strong>${escapeHtml(item.sectionTitle)}</strong>
+            <small>${escapeHtml(item.subtitle || item.title)}</small>
+            <p>${escapeHtml(item.matchedExcerpt)}</p>
           </a>
         `,
       )
@@ -44,7 +66,24 @@ import { searchIndex } from '@/lib/docs';
     }
 
     const items = searchIndex
-      .filter((item) => item.searchText.toLowerCase().includes(query))
+      .map((item) => {
+        const lowerTitle = item.sectionTitle.toLowerCase();
+        const lowerSubtitle = item.subtitle.toLowerCase();
+        const lowerSearchText = item.searchText.toLowerCase();
+
+        if (!lowerSearchText.includes(query)) return null;
+
+        return {
+          ...item,
+          score:
+            (lowerTitle.includes(query) ? 30 : 0) +
+            (lowerSubtitle.includes(query) ? 15 : 0) +
+            (item.sourcePath.toLowerCase().includes(query) ? 8 : 0),
+          matchedExcerpt: getExcerpt(item, query),
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => b.score - a.score || a.chapter - b.chapter)
       .slice(0, 6);
 
     renderResults(items);

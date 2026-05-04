@@ -8,11 +8,25 @@ export type Heading = {
   id: string;
 };
 
+export type SearchSection = {
+  title: string;
+  subtitle: string;
+  categoryLabel: string;
+  sourcePath: string;
+  chapter: number;
+  sectionTitle: string;
+  sectionId: string;
+  href: string;
+  excerpt: string;
+  searchText: string;
+};
+
 export type StudyDoc = {
   slug: string;
   chapter: number;
   category: DocCategory;
   categoryLabel: string;
+  sourcePath: string;
   title: string;
   subtitle: string;
   description: string;
@@ -58,9 +72,21 @@ const plainText = (value: string) =>
     .replace(/\s+/g, ' ')
     .trim();
 
+const escapeHtml = (value: string) =>
+  value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+
 const extractChapter = (path: string) => {
   const fileName = path.split('/').pop() ?? '';
   return Number.parseInt(fileName.replace('.md', ''), 10);
+};
+
+const getSourcePath = (path: string) => {
+  const fileName = path.split('/').pop() ?? '';
+  return `docs/${fileName}`;
 };
 
 const extractHeadings = (content: string): Heading[] => {
@@ -90,19 +116,67 @@ const addHeadingIds = (content: string, headings: Heading[]) => {
   return content
     .split('\n')
     .map((line) => {
-      if (!/^(#{1,3})\s+/.test(line.trim())) return line;
+      const match = /^(#{1,3})\s+(.+)$/.exec(line.trim());
+      if (!match) return line;
 
       const heading = headings[index];
       index += 1;
 
       if (!heading) return line;
-      return `${line} {#${heading.id}}`;
+      return `<h${heading.depth} id="${heading.id}">${escapeHtml(heading.text)}</h${heading.depth}>`;
     })
     .join('\n');
 };
 
+const buildSections = (doc: Pick<StudyDoc, 'title' | 'subtitle' | 'categoryLabel' | 'sourcePath' | 'chapter' | 'href' | 'raw' | 'headings'>): SearchSection[] => {
+  const sections: SearchSection[] = [];
+  const lines = doc.raw.split('\n');
+  let headingIndex = -1;
+  let current: Heading | null = null;
+  let body: string[] = [];
+
+  const pushCurrent = () => {
+    if (!current) return;
+
+    const text = plainText(body.join('\n'));
+    const searchable = plainText(`${doc.title} ${doc.subtitle} ${current.text} ${text}`);
+
+    if (!searchable) return;
+
+    sections.push({
+      title: doc.title,
+      subtitle: doc.subtitle,
+      categoryLabel: doc.categoryLabel,
+      sourcePath: doc.sourcePath,
+      chapter: doc.chapter,
+      sectionTitle: current.text,
+      sectionId: current.id,
+      href: `${doc.href}#${current.id}`,
+      excerpt: text.slice(0, 150),
+      searchText: searchable,
+    });
+  };
+
+  for (const line of lines) {
+    if (/^(#{1,3})\s+/.test(line.trim())) {
+      pushCurrent();
+      headingIndex += 1;
+      current = doc.headings[headingIndex] ?? null;
+      body = [];
+      continue;
+    }
+
+    body.push(line);
+  }
+
+  pushCurrent();
+
+  return sections;
+};
+
 const buildDoc = ([path, rawModule]: [string, unknown]): StudyDoc => {
   const chapter = extractChapter(path);
+  const sourcePath = getSourcePath(path);
   const raw = stripWikiLinks(String(rawModule));
   const headings = extractHeadings(raw);
   const title = headings.find((heading) => heading.depth === 1)?.text ?? `${chapter}장`;
@@ -122,6 +196,7 @@ const buildDoc = ([path, rawModule]: [string, unknown]): StudyDoc => {
     chapter,
     category,
     categoryLabel: category === 'stock' ? '주식' : '퀀트',
+    sourcePath,
     title,
     subtitle,
     description: plainText(firstParagraph).slice(0, 120),
@@ -147,10 +222,4 @@ export const getDocsByCategory = (category: DocCategory) =>
 export const getDoc = (category: DocCategory, slug: string) =>
   allDocs.find((doc) => doc.category === category && doc.slug === slug);
 
-export const searchIndex = allDocs.map(({ title, subtitle, categoryLabel, href, searchText }) => ({
-  title,
-  subtitle,
-  categoryLabel,
-  href,
-  searchText,
-}));
+export const searchIndex = allDocs.flatMap((doc) => buildSections(doc));

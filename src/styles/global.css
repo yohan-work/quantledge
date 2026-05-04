@@ -203,14 +203,14 @@ a {
 
 .search-result {
   display: grid;
-  gap: 3px;
+  gap: 5px;
   padding: 12px;
   background: var(--bg);
   border: 1px solid var(--line);
   border-radius: 7px;
 }
 
-.search-result span,
+.search-result-path,
 .search-result small,
 .search-empty {
   color: var(--muted);
@@ -219,6 +219,14 @@ a {
 
 .search-result strong {
   font-size: 14px;
+  line-height: 1.45;
+}
+
+.search-result p {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
 }
 
 .doc-grid {
@@ -288,13 +296,41 @@ a {
   position: sticky;
   top: 92px;
   display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 14px;
+  height: calc(100vh - 116px);
+  min-height: 0;
+  overflow: hidden;
 }
 
 .doc-side nav,
 .toc nav {
   display: grid;
+  align-content: start;
   gap: 4px;
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 6px;
+  scrollbar-color: #cbd3dc transparent;
+  scrollbar-width: thin;
+}
+
+.doc-side nav::-webkit-scrollbar,
+.toc nav::-webkit-scrollbar {
+  width: 6px;
+}
+
+.doc-side nav::-webkit-scrollbar-thumb,
+.toc nav::-webkit-scrollbar-thumb {
+  background: #cbd3dc;
+  border-radius: 999px;
+}
+
+.doc-side nav::-webkit-scrollbar-track,
+.toc nav::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .side-link,
@@ -335,6 +371,12 @@ a {
   color: var(--text);
 }
 
+.toc a.active {
+  background: var(--blue-soft);
+  color: var(--blue);
+  font-weight: 760;
+}
+
 .article {
   min-width: 0;
 }
@@ -364,6 +406,38 @@ a {
   scroll-margin-top: 96px;
   color: var(--text);
   letter-spacing: 0;
+}
+
+.article-body h1:target,
+.article-body h2:target,
+.article-body h3:target {
+  position: relative;
+  border-radius: 8px;
+  animation: section-focus 1800ms ease-out;
+}
+
+.article-body h1:target::before,
+.article-body h2:target::before,
+.article-body h3:target::before {
+  content: "";
+  position: absolute;
+  top: 0.18em;
+  bottom: 0.18em;
+  left: -16px;
+  width: 4px;
+  border-radius: 999px;
+  background: var(--blue);
+}
+
+@keyframes section-focus {
+  0% {
+    background: var(--blue-soft);
+    box-shadow: 0 0 0 8px var(--blue-soft);
+  }
+  100% {
+    background: transparent;
+    box-shadow: 0 0 0 0 rgba(238, 245, 255, 0);
+  }
 }
 
 .article-body h1 {
@@ -521,12 +595,18 @@ a {
 
   .doc-side {
     position: static;
+    grid-template-rows: auto;
+    height: auto;
+    overflow: visible;
     padding-bottom: 20px;
     border-bottom: 1px solid var(--line);
   }
 
   .doc-side nav {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    height: auto;
+    overflow: visible;
+    padding-right: 0;
   }
 
   .article > h1 {

@@ -37,7 +37,7 @@ const toc = doc.headings.filter((heading) => heading.depth >= 1 && heading.depth
     <nav>
       {
         toc.map((heading) => (
-          <a class:list={[`depth-${heading.depth}`]} href={`#${heading.id}`}>
+          <a class:list={[`depth-${heading.depth}`]} href={`#${heading.id}`} data-toc-link={heading.id}>
             {heading.text}
           </a>
         ))
@@ -45,3 +45,74 @@ const toc = doc.headings.filter((heading) => heading.depth >= 1 && heading.depth
     </nav>
   </aside>
 </div>
+
+<script>
+  const tocLinks = [...document.querySelectorAll('[data-toc-link]')];
+  const tocNav = document.querySelector('.toc nav');
+  const headings = tocLinks
+    .map((link) => document.getElementById(link.getAttribute('data-toc-link') ?? ''))
+    .filter(Boolean);
+  let ticking = false;
+
+  const keepActiveLinkVisible = (link) => {
+    if (!tocNav) return;
+
+    const linkTop = link.offsetTop;
+    const linkBottom = linkTop + link.offsetHeight;
+    const visibleTop = tocNav.scrollTop;
+    const visibleBottom = visibleTop + tocNav.clientHeight;
+
+    if (linkTop < visibleTop) {
+      tocNav.scrollTop = linkTop - 8;
+    } else if (linkBottom > visibleBottom) {
+      tocNav.scrollTop = linkBottom - tocNav.clientHeight + 8;
+    }
+  };
+
+  const setActiveToc = (id) => {
+    tocLinks.forEach((link) => {
+      const active = link.getAttribute('data-toc-link') === id;
+      link.classList.toggle('active', active);
+
+      if (active) {
+        keepActiveLinkVisible(link);
+      }
+    });
+  };
+
+  if (headings.length > 0) {
+    const updateActiveToc = () => {
+      const current =
+        headings
+          .filter((heading) => heading.getBoundingClientRect().top <= 120)
+          .at(-1) ?? headings[0];
+
+      if (current?.id) {
+        setActiveToc(current.id);
+      }
+
+      ticking = false;
+    };
+
+    window.addEventListener(
+      'scroll',
+      () => {
+        if (ticking) return;
+
+        ticking = true;
+        window.requestAnimationFrame(updateActiveToc);
+      },
+      { passive: true },
+    );
+
+    window.addEventListener('hashchange', () => {
+      setActiveToc(decodeURIComponent(window.location.hash.slice(1)));
+    });
+
+    if (window.location.hash) {
+      setActiveToc(decodeURIComponent(window.location.hash.slice(1)));
+    } else {
+      updateActiveToc();
+    }
+  }
+</script>
