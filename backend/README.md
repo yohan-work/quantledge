@@ -77,4 +77,10 @@ npm run dev
 }
 ```
 
+`low-per-quality` / `portfolio-rebalance` additionally accept:
+
+- `topK`: number of holdings
+- `rankingMode`: `momentum` (12-1 price momentum) or `value_quality` (pykrx PER/PBR/EPS/BPS with lag)
+- `fundamentalLagDays`: trading-day lag for the fundamental snapshot when using `value_quality` (default 20)
+
 The service is for learning and backtest experiments only. It is not an investment recommendation system.
