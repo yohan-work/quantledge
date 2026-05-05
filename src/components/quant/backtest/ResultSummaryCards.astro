@@ -1,0 +1,66 @@
+---
+import { formatCurrency, formatNumber, formatPercent } from '@/lib/backtest/formatters';
+import type { BacktestResult } from '@/lib/backtest/types';
+
+type Props = {
+  result: BacktestResult;
+};
+
+const { result } = Astro.props;
+const buyAndHoldFinalCapital = result.buyAndHold?.finalCapital ?? result.buyAndHoldFinalCapital ?? result.initialCapital;
+const buyAndHoldTotalReturn = result.buyAndHold?.totalReturn ?? result.buyAndHoldTotalReturn ?? 0;
+const buyAndHoldCagr = result.buyAndHold?.cagr ?? result.buyAndHoldCagr ?? 0;
+const buyAndHoldMdd = result.buyAndHold?.mdd ?? result.buyAndHoldMdd ?? 0;
+const rows = [
+  {
+    label: '최종 자산',
+    strategy: formatCurrency(result.finalCapital),
+    benchmark: formatCurrency(buyAndHoldFinalCapital),
+  },
+  {
+    label: '총수익률',
+    strategy: formatPercent(result.totalReturn),
+    benchmark: formatPercent(buyAndHoldTotalReturn),
+  },
+  {
+    label: 'CAGR',
+    strategy: formatPercent(result.cagr),
+    benchmark: formatPercent(buyAndHoldCagr),
+  },
+  {
+    label: 'MDD',
+    strategy: formatPercent(result.mdd),
+    benchmark: formatPercent(buyAndHoldMdd),
+  },
+  {
+    label: '거래 횟수',
+    strategy: `${formatNumber(result.tradeCount)}회`,
+    benchmark: '0회',
+  },
+  {
+    label: '단순 보유 대비',
+    strategy: formatPercent(result.excessReturn ?? result.finalCapital / buyAndHoldFinalCapital - 1),
+    benchmark: '기준',
+  },
+];
+---
+
+<section class="quant-section" aria-labelledby="summary-title">
+  <div class="section-head compact">
+    <div>
+      <p class="eyebrow">Result Summary</p>
+      <h2 id="summary-title">결과 요약</h2>
+    </div>
+  </div>
+  <div class="metric-grid">
+    {
+      rows.map((row) => (
+        <article class="metric-card">
+          <span>{row.label}</span>
+          <strong>{row.strategy}</strong>
+          <p>단순 보유: {row.benchmark}</p>
+        </article>
+      ))
+    }
+  </div>
+</section>

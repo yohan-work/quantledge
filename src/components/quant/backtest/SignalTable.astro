@@ -1,0 +1,53 @@
+---
+import { formatCurrency } from '@/lib/backtest/formatters';
+import type { TradeSignal } from '@/lib/backtest/types';
+
+type Props = {
+  signals: TradeSignal[];
+};
+
+const { signals } = Astro.props;
+const allSignals = signals;
+---
+
+<section class="quant-section" aria-labelledby="signals-title">
+  <div class="section-head compact">
+    <div>
+      <p class="eyebrow">Signals</p>
+      <h2 id="signals-title">전체 매수·매도 신호</h2>
+    </div>
+    <p class="data-range">{allSignals.length}개 신호</p>
+  </div>
+  <div class="table-scroll signal-scroll">
+    <table class="signal-table">
+      <thead>
+        <tr>
+          <th>날짜</th>
+          <th>종가</th>
+          <th>20일선</th>
+          <th>포지션</th>
+          <th>액션</th>
+          <th>이유</th>
+        </tr>
+      </thead>
+      <tbody>
+        {
+          allSignals.map((signal) => (
+            <tr>
+              <td>{signal.date}</td>
+              <td>{formatCurrency(signal.close)}</td>
+              <td>{signal.ma20 === null ? '-' : formatCurrency(signal.ma20)}</td>
+              <td>{signal.position === 1 ? '보유' : '현금'}</td>
+              <td>
+                <span class:list={['signal-badge', signal.action.toLowerCase()]}>
+                  {signal.action}
+                </span>
+              </td>
+              <td>{signal.reason}</td>
+            </tr>
+          ))
+        }
+      </tbody>
+    </table>
+  </div>
+</section>

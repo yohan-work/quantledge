@@ -1,0 +1,28 @@
+---
+const items = [
+  '60일 이동평균선 전략 추가',
+  '20일/60일 골든크로스 전략 추가',
+  '여러 종목 동시 백테스트',
+  'PER/PBR/ROE 기반 팩터 전략',
+  '저PER + 퀄리티 필터 전략',
+  '거래대금 필터 적용',
+  '월간 리밸런싱 포트폴리오',
+  '벤치마크 비교',
+  'CSV 업로드 기반 백테스트',
+  'Python FastAPI 백엔드 연동',
+  '백테스트 결과 리포트 저장',
+  '기존 학습 아카이브 문서와 연결',
+];
+---
+
+<section class="quant-section" aria-labelledby="future-title">
+  <div class="section-head compact">
+    <div>
+      <p class="eyebrow">Roadmap</p>
+      <h2 id="future-title">향후 확장 계획</h2>
+    </div>
+  </div>
+  <ol class="future-list">
+    {items.map((item) => <li>{item}</li>)}
+  </ol>
+</section>
