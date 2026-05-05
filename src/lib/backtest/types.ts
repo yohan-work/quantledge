@@ -1,0 +1,110 @@
+export type PriceData = {
+  date: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+  tradingValue?: number;
+};
+
+export type PriceDataWithMA = PriceData & {
+  movingAverage?: number | null;
+  ma5?: number | null;
+  ma20: number | null;
+  ma60?: number | null;
+  ma120?: number | null;
+};
+
+export type EquityPoint = {
+  date: string;
+  strategyEquity: number;
+  buyAndHoldEquity: number;
+};
+
+export type DrawdownPoint = {
+  date: string;
+  strategyDrawdown: number;
+  buyAndHoldDrawdown: number;
+};
+
+export type TradeSignal = {
+  date: string;
+  action: 'BUY' | 'SELL' | 'HOLD' | 'CASH';
+  close: number;
+  movingAverage?: number | null;
+  ma20: number | null;
+  position: 0 | 1;
+  reason: string;
+};
+
+export type BacktestResult = {
+  strategyId?: string;
+  strategyName: string;
+  symbol: string;
+  symbolName: string;
+  startDate: string;
+  endDate: string;
+  initialCapital: number;
+  finalCapital: number;
+  buyAndHoldFinalCapital?: number;
+  totalReturn: number;
+  buyAndHoldTotalReturn?: number;
+  excessReturn?: number;
+  cagr: number;
+  buyAndHoldCagr?: number;
+  mdd: number;
+  buyAndHoldMdd?: number;
+  tradeCount: number;
+  winRate?: number;
+  buyAndHold?: {
+    finalCapital: number;
+    totalReturn: number;
+    cagr: number;
+    mdd: number;
+  };
+  dataSource?: 'krx' | 'naver' | 'fdr';
+  dataQuality?: {
+    requestedStartDate: string;
+    requestedEndDate: string;
+    actualStartDate: string;
+    actualEndDate: string;
+    tradingDayCount: number;
+    maWarmupDays: number;
+    firstValidMaDate: string | null;
+    hasMissingOhlcv: boolean;
+  };
+  priceData?: PriceDataWithMA[];
+  equityCurve: EquityPoint[];
+  drawdownCurve: DrawdownPoint[];
+  signals: TradeSignal[];
+};
+
+export type StrategyParameter = {
+  key: string;
+  label: string;
+  type: 'number' | 'text' | 'date';
+  defaultValue: number | string;
+};
+
+export type StrategyDefinition = {
+  id: string;
+  name: string;
+  description: string;
+  category: 'technical' | 'fundamental' | 'portfolio';
+  enabled: boolean;
+  parameters: StrategyParameter[];
+};
+
+export type BacktestRunRequest = {
+  strategyId: string;
+  symbol: string;
+  symbolName: string;
+  startDate: string;
+  endDate: string;
+  initialCapital: number;
+  commissionRate: number;
+  parameters: {
+    period: number;
+  };
+};
