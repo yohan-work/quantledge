@@ -33,7 +33,7 @@ export type TradeSignal = {
   action: 'BUY' | 'SELL' | 'HOLD' | 'CASH';
   close: number;
   movingAverage?: number | null;
-  ma20: number | null;
+  ma20?: number | null;
   position: 0 | 1;
   reason: string;
 };
@@ -64,6 +64,7 @@ export type BacktestResult = {
     mdd: number;
   };
   dataSource?: 'krx' | 'naver' | 'fdr';
+  displayKind?: 'single' | 'portfolio';
   dataQuality?: {
     requestedStartDate: string;
     requestedEndDate: string;
@@ -73,6 +74,9 @@ export type BacktestResult = {
     maWarmupDays: number;
     firstValidMaDate: string | null;
     hasMissingOhlcv: boolean;
+    universeDescription?: string | null;
+    rebalanceMonths?: number | null;
+    strategyNote?: string | null;
   };
   priceData?: PriceDataWithMA[];
   equityCurve: EquityPoint[];
@@ -104,7 +108,5 @@ export type BacktestRunRequest = {
   endDate: string;
   initialCapital: number;
   commissionRate: number;
-  parameters: {
-    period: number;
-  };
+  parameters: Record<string, number | string>;
 };

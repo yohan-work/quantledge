@@ -106,34 +106,56 @@ const strategyDefinitions: BacktestStrategyDefinition[] = [
   {
     id: 'golden-cross',
     name: '20/60 골든크로스',
-    description: '단기 이동평균선과 장기 이동평균선 교차를 비교하는 전략',
+    description: '단기 이동평균이 장기 이동평균 위에 있을 때만 보유합니다. 익일 시가·종가 체결을 가정합니다.',
     category: 'technical',
-    enabled: false,
-    parameters: [],
+    enabled: true,
+    parameters: [
+      { key: 'shortPeriod', label: '단기 MA', type: 'number', defaultValue: 20 },
+      { key: 'longPeriod', label: '장기 MA', type: 'number', defaultValue: 60 },
+    ],
+    defaultPeriod: 20,
+    lockedPeriod: false,
+  },
+  {
+    id: 'regime-ma',
+    name: '레짐 MA (장기·단기)',
+    description: '장기 이동평균(추세 필터) 위에서만 단기 이동평균 조건을 적용합니다. 기본 200일·20일.',
+    category: 'technical',
+    enabled: true,
+    parameters: [
+      { key: 'filterPeriod', label: '장기 MA', type: 'number', defaultValue: 200 },
+      { key: 'signalPeriod', label: '단기 MA', type: 'number', defaultValue: 20 },
+    ],
     defaultPeriod: 20,
     lockedPeriod: false,
   },
   {
     id: 'low-per-quality',
-    name: '저PER + 퀄리티',
-    description: '밸류에이션과 수익성 조건을 함께 검토하는 팩터 전략',
+    name: '저PER + 퀄리티 (유니버스 팩터)',
+    description:
+      '미리 정해진 대형주 10개만 대상으로, 매달 말 “거래 많이 되는 종목”만 남긴 뒤, 순위 방식에 따라 상위 K개를 골라 동일 비중으로 갈아탑니다. 기본은 PER 낮은 순(pykrx)·몇 가지 흑자 조건; 바꾸면 12개월 모멘텀 순위도 됩니다. 첫 실행은 데이터가 많아 1~3분 걸릴 수 있습니다.',
     category: 'fundamental',
-    enabled: false,
-    parameters: [],
+    enabled: true,
+    parameters: [{ key: 'topK', label: '편입 종목 수', type: 'number', defaultValue: 5 }],
     defaultPeriod: 20,
     lockedPeriod: false,
   },
   {
     id: 'portfolio-rebalance',
-    name: '월간 리밸런싱',
-    description: '여러 종목을 정해진 주기로 재조정하는 포트폴리오 전략',
+    name: '월간 리밸런싱 (동일 엔진)',
+    description:
+      '위와 같은 10종·월말 리밸 엔진입니다. 기본 순위만 “12-1 모멘텀”으로 두어, 저PER 전략과 나란히 비교하기 좋게 했습니다.',
     category: 'portfolio',
-    enabled: false,
-    parameters: [],
+    enabled: true,
+    parameters: [{ key: 'topK', label: '편입 종목 수', type: 'number', defaultValue: 5 }],
     defaultPeriod: 20,
     lockedPeriod: false,
   },
 ];
+
+const portfolioStrategyIds = new Set(['low-per-quality', 'portfolio-rebalance']);
+
+const PORTFOLIO_FETCH_TIMEOUT_MS = 240_000;
 
 const resolveBuyAndHold = (result: BacktestResult) => ({
   finalCapital: result.buyAndHold?.finalCapital ?? result.buyAndHoldFinalCapital ?? result.initialCapital,
@@ -195,12 +217,12 @@ const SignalRows = ({ signals }: { signals: TradeSignal[] }) => {
           <tbody>
             {allSignals.map((signal) => (
               (() => {
-                const movingAverage = signal.movingAverage ?? signal.ma20;
+                const movingAverage = signal.movingAverage ?? signal.ma20 ?? null;
                 return (
                   <tr key={signal.date}>
                     <td>{signal.date}</td>
                     <td>{formatCurrency(signal.close)}</td>
-                    <td>{movingAverage === null ? '-' : formatCurrency(movingAverage)}</td>
+                    <td>{movingAverage === null || movingAverage === undefined ? '-' : formatCurrency(movingAverage)}</td>
                     <td>{signal.position === 1 ? '보유' : '현금'}</td>
                     <td>
                       <span className={`signal-badge ${signal.action.toLowerCase()}`}>{signal.action}</span>
@@ -219,10 +241,68 @@ const SignalRows = ({ signals }: { signals: TradeSignal[] }) => {
 
 const DataQualityCard = ({ result }: { result: BacktestResult }) => {
   const quality = result.dataQuality;
+  if (!quality) return null;
+
+  if (result.displayKind === 'portfolio') {
+    const sourceLabel = result.dataSource ? sourceLabelMap[result.dataSource] : '확인 불가';
+    const requestedRangeChanged =
+      quality.requestedStartDate !== quality.actualStartDate || quality.requestedEndDate !== quality.actualEndDate;
+    return (
+      <section className="quant-section" aria-labelledby="data-quality-title">
+        <div className="section-head compact">
+          <div>
+            <p className="eyebrow">Data Check</p>
+            <h2 id="data-quality-title">데이터 검증 (포트폴리오)</h2>
+          </div>
+        </div>
+        <div className="data-quality-grid">
+          <article className="data-quality-card">
+            <span>데이터 소스</span>
+            <strong>{sourceLabel}</strong>
+            <p>유니버스 종목별 가격을 동일 소스 우선순위로 수집했습니다.</p>
+          </article>
+          <article className="data-quality-card">
+            <span>유니버스</span>
+            <strong>{quality.universeDescription ?? '기본 10종'}</strong>
+            <p>동일 거래일에 모든 종목 시세가 있을 때만 해당 날을 사용합니다.</p>
+          </article>
+          <article className="data-quality-card">
+            <span>모멘텀·유동성 워밍업</span>
+            <strong>{formatNumber(quality.maWarmupDays)}거래일</strong>
+            <p>12-1 모멘텀과 거래대금 이동평균에 필요한 최소 길이입니다.</p>
+          </article>
+          <article className="data-quality-card">
+            <span>리밸런싱(월말) 횟수</span>
+            <strong>{quality.rebalanceMonths != null ? formatNumber(quality.rebalanceMonths) : '-'}회</strong>
+            <p>기간 중 월말 거래일마다 순위를 다시 계산했습니다.</p>
+          </article>
+          <article className="data-quality-card">
+            <span>입력 시작일</span>
+            <strong>{quality.requestedStartDate}</strong>
+            <p>결과 곡선은 이 날짜부터 정규화된 자산 가치로 표시합니다.</p>
+          </article>
+          <article className="data-quality-card">
+            <span>실제 시작·종료 거래일</span>
+            <strong>
+              {quality.actualStartDate} ~ {quality.actualEndDate}
+            </strong>
+            <p>{requestedRangeChanged ? '입력 범위와 실제 거래일이 다를 수 있습니다.' : '요청 범위와 일치합니다.'}</p>
+          </article>
+          <article className="data-quality-card">
+            <span>거래일 수</span>
+            <strong>{formatNumber(quality.tradingDayCount)}일</strong>
+            <p>표시 구간의 거래일 수입니다.</p>
+          </article>
+        </div>
+        {quality.strategyNote && <p className="quality-warning">{quality.strategyNote}</p>}
+      </section>
+    );
+  }
+
   const firstPrice = result.priceData?.[0];
   const lastPrice = result.priceData?.[result.priceData.length - 1];
 
-  if (!quality || !firstPrice || !lastPrice) return null;
+  if (!firstPrice || !lastPrice) return null;
 
   const sourceLabel = result.dataSource ? sourceLabelMap[result.dataSource] : '확인 불가';
   const requestedRangeChanged =
@@ -302,6 +382,13 @@ export default function BacktestRunner() {
     startDate: toDateInputValue(addYears(new Date(), -3)),
     endDate: today,
     period: 20,
+    shortPeriod: 20,
+    longPeriod: 60,
+    filterPeriod: 200,
+    signalPeriod: 20,
+    topK: 5,
+    rankingMode: 'value_quality' as 'momentum' | 'value_quality',
+    fundamentalLagDays: 20,
     initialCapital: 10000000,
     commissionRate: 0,
   });
@@ -319,7 +406,17 @@ export default function BacktestRunner() {
   );
 
   const updateField = (field: keyof typeof form, value: string) => {
-    const numericFields = new Set(['period', 'initialCapital', 'commissionRate']);
+    const numericFields = new Set([
+      'period',
+      'shortPeriod',
+      'longPeriod',
+      'filterPeriod',
+      'signalPeriod',
+      'topK',
+      'fundamentalLagDays',
+      'initialCapital',
+      'commissionRate',
+    ]);
     setForm((current) => ({
       ...current,
       [field]: numericFields.has(field) ? Number(value) : value,
@@ -331,11 +428,17 @@ export default function BacktestRunner() {
 
   const updateStrategy = (strategyId: string) => {
     const strategy = strategyDefinitions.find((item) => item.id === strategyId);
-    setForm((current) => ({
-      ...current,
-      strategyId,
-      period: strategy?.defaultPeriod ?? current.period,
-    }));
+    setForm((current) => {
+      let rankingMode = current.rankingMode;
+      if (strategyId === 'low-per-quality') rankingMode = 'value_quality';
+      if (strategyId === 'portfolio-rebalance') rankingMode = 'momentum';
+      return {
+        ...current,
+        strategyId,
+        period: strategy?.defaultPeriod ?? current.period,
+        rankingMode,
+      };
+    });
   };
 
   useEffect(() => {
@@ -419,9 +522,26 @@ export default function BacktestRunner() {
     }));
   };
 
+  const buildParameters = (): Record<string, number | string> => {
+    if (form.strategyId === 'golden-cross') {
+      return { shortPeriod: form.shortPeriod, longPeriod: form.longPeriod };
+    }
+    if (form.strategyId === 'regime-ma') {
+      return { filterPeriod: form.filterPeriod, signalPeriod: form.signalPeriod };
+    }
+    if (portfolioStrategyIds.has(form.strategyId)) {
+      return {
+        topK: form.topK,
+        rankingMode: form.rankingMode,
+        fundamentalLagDays: form.fundamentalLagDays,
+      };
+    }
+    return { period: form.period };
+  };
+
   const runBacktest = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!form.symbol.trim() || !form.symbolName.trim()) {
+    if (!portfolioStrategyIds.has(form.strategyId) && (!form.symbol.trim() || !form.symbolName.trim())) {
       setError('종목명과 종목코드를 입력해 주세요. 종목명을 입력하면 알려진 종목은 코드가 자동으로 채워집니다.');
       return;
     }
@@ -431,22 +551,24 @@ export default function BacktestRunner() {
 
     const request: BacktestRunRequest = {
       strategyId: form.strategyId,
-      symbol: form.symbol,
-      symbolName: form.symbolName,
+      symbol: portfolioStrategyIds.has(form.strategyId) ? 'UNIVERSE' : form.symbol,
+      symbolName: portfolioStrategyIds.has(form.strategyId) ? '유니버스 포트폴리오' : form.symbolName,
       startDate: form.startDate,
       endDate: form.endDate,
       initialCapital: form.initialCapital,
       commissionRate: form.commissionRate,
-      parameters: {
-        period: form.period,
-      },
+      parameters: buildParameters(),
     };
+
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), PORTFOLIO_FETCH_TIMEOUT_MS);
 
     try {
       const response = await fetch(`${apiBaseUrl}/api/backtest/run`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(request),
+        signal: controller.signal,
       });
 
       if (!response.ok) {
@@ -457,8 +579,15 @@ export default function BacktestRunner() {
       setResult(payload);
     } catch (exc) {
       setResult(null);
-      setError(exc instanceof Error ? exc.message : '백테스트 실행 중 오류가 발생했습니다.');
+      if (exc instanceof Error && exc.name === 'AbortError') {
+        setError(
+          `${PORTFOLIO_FETCH_TIMEOUT_MS / 60000}분 안에 응답이 없어 중단했습니다. 유니버스·밸류 모드는 pykrx로 10종목 가격·재무를 불러와 서버에서 시간이 오래 걸릴 수 있습니다. 백엔드 터미널 로그·네트워크·방화벽을 확인하거나, 기간을 짧게(예: 1년) 줄여 다시 시도해 보세요.`,
+        );
+      } else {
+        setError(exc instanceof Error ? exc.message : '백테스트 실행 중 오류가 발생했습니다.');
+      }
     } finally {
+      window.clearTimeout(timeoutId);
       setIsLoading(false);
     }
   };
@@ -518,6 +647,7 @@ export default function BacktestRunner() {
                 value={form.symbolName}
                 list="ticker-options"
                 placeholder="예: 삼성전자"
+                disabled={portfolioStrategyIds.has(form.strategyId)}
                 onChange={(event) => updateSymbolName(event.target.value)}
               />
               <datalist id="ticker-options">
@@ -533,6 +663,7 @@ export default function BacktestRunner() {
               <input
                 value={form.symbol}
                 placeholder="예: 005930"
+                disabled={portfolioStrategyIds.has(form.strategyId)}
                 onChange={(event) => updateField('symbol', event.target.value)}
               />
             </label>
@@ -544,17 +675,108 @@ export default function BacktestRunner() {
               <span>종료일</span>
               <input type="date" value={form.endDate} onChange={(event) => updateField('endDate', event.target.value)} />
             </label>
-            <label>
-              <span>이동평균 기간</span>
-              <input
-                type="number"
-                min="2"
-                max="240"
-                value={form.period}
-                disabled={enabledStrategy?.lockedPeriod}
-                onChange={(event) => updateField('period', event.target.value)}
-              />
-            </label>
+            {(form.strategyId === 'ma20' || form.strategyId === 'ma60') && (
+              <label>
+                <span>이동평균 기간</span>
+                <input
+                  type="number"
+                  min="2"
+                  max="240"
+                  value={form.period}
+                  disabled={enabledStrategy?.lockedPeriod}
+                  onChange={(event) => updateField('period', event.target.value)}
+                />
+              </label>
+            )}
+            {form.strategyId === 'golden-cross' && (
+              <>
+                <label>
+                  <span>단기 MA (일)</span>
+                  <input
+                    type="number"
+                    min="2"
+                    max="120"
+                    value={form.shortPeriod}
+                    onChange={(event) => updateField('shortPeriod', event.target.value)}
+                  />
+                </label>
+                <label>
+                  <span>장기 MA (일)</span>
+                  <input
+                    type="number"
+                    min="3"
+                    max="360"
+                    value={form.longPeriod}
+                    onChange={(event) => updateField('longPeriod', event.target.value)}
+                  />
+                </label>
+              </>
+            )}
+            {form.strategyId === 'regime-ma' && (
+              <>
+                <label>
+                  <span>장기 추세 MA (일)</span>
+                  <input
+                    type="number"
+                    min="20"
+                    max="360"
+                    value={form.filterPeriod}
+                    onChange={(event) => updateField('filterPeriod', event.target.value)}
+                  />
+                </label>
+                <label>
+                  <span>단기 신호 MA (일)</span>
+                  <input
+                    type="number"
+                    min="2"
+                    max="120"
+                    value={form.signalPeriod}
+                    onChange={(event) => updateField('signalPeriod', event.target.value)}
+                  />
+                </label>
+              </>
+            )}
+            {portfolioStrategyIds.has(form.strategyId) && (
+              <>
+                <label>
+                  <span>순위 방식</span>
+                  <select
+                    value={form.rankingMode}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        rankingMode: event.target.value as 'momentum' | 'value_quality',
+                      }))
+                    }
+                  >
+                    <option value="value_quality">밸류·퀄리티 (저PER·pykrx)</option>
+                    <option value="momentum">12-1 가격 모멘텀</option>
+                  </select>
+                </label>
+                {form.rankingMode === 'value_quality' && (
+                  <label>
+                    <span>재무 지표 지연 (거래일)</span>
+                    <input
+                      type="number"
+                      min="0"
+                      max="120"
+                      value={form.fundamentalLagDays}
+                      onChange={(event) => updateField('fundamentalLagDays', event.target.value)}
+                    />
+                  </label>
+                )}
+                <label>
+                  <span>편입 종목 수 (Top K)</span>
+                  <input
+                    type="number"
+                    min="1"
+                    max="10"
+                    value={form.topK}
+                    onChange={(event) => updateField('topK', event.target.value)}
+                  />
+                </label>
+              </>
+            )}
             <label>
               <span>초기 자산</span>
               <input
@@ -581,7 +803,9 @@ export default function BacktestRunner() {
             {isLoading ? '계산 중' : '백테스트 실행'}
           </button>
           <p className="form-help">
-            종목명을 2글자 이상 입력하면 KRX 종목 목록에서 코드를 찾습니다. 후보가 여러 개면 아래에서 선택하세요.
+            {portfolioStrategyIds.has(form.strategyId)
+              ? '고정 10종·월말 리밸 전략입니다. 종목 입력은 필요 없습니다. 백엔드가 pykrx로 10번(가격) + 밸류 모드면 10번(투자지표) 정도 호출하므로 첫 응답이 1~3분 걸릴 수 있습니다. 백엔드 터미널이 꺼져 있으면 영원히 로딩처럼 보입니다.'
+              : '종목명을 2글자 이상 입력하면 KRX 종목 목록에서 코드를 찾습니다. 후보가 여러 개면 아래에서 선택하세요.'}
           </p>
           <div className="period-presets" aria-label="백테스트 기간 빠른 선택">
             {periodPresets.map((preset) => (
@@ -598,7 +822,7 @@ export default function BacktestRunner() {
           <p className="form-help">
             기간 버튼은 입력값만 바꿉니다. 주말과 휴장일은 백엔드에서 실제 거래일 기준으로 보정해 표시합니다.
           </p>
-          {(isTickerLoading || tickerError || tickerMatches.length > 0) && (
+          {!portfolioStrategyIds.has(form.strategyId) && (isTickerLoading || tickerError || tickerMatches.length > 0) && (
             <div className="ticker-search-panel" aria-live="polite">
               {isTickerLoading && <span>종목을 검색 중입니다.</span>}
               {tickerError && <span className="ticker-error">{tickerError}</span>}
@@ -616,7 +840,8 @@ export default function BacktestRunner() {
             </div>
           )}
           <div className="ticker-shortcuts" aria-label="종목 빠른 선택">
-            {suggestedTickers.slice(0, 6).map((ticker) => (
+            {!portfolioStrategyIds.has(form.strategyId) &&
+              suggestedTickers.slice(0, 6).map((ticker) => (
               <button
                 key={ticker.symbol}
                 type="button"
@@ -631,7 +856,23 @@ export default function BacktestRunner() {
 
       {isLoading && (
         <section className="state-card loading-state" aria-live="polite">
-          실제 가격 데이터를 불러오고 백테스트를 계산 중입니다.
+          {portfolioStrategyIds.has(form.strategyId) ? (
+            <>
+              <strong>유니버스 백테스트 진행 중</strong>
+              <p>
+                10개 종목에 대해 pykrx로 가격을 모으고, 밸류·퀄리티 모드이면 종목마다 PER·EPS 등 투자지표까지
+                가져옵니다. 순차 호출이었을 때는 수 분 걸리기도 해서, 지금은 서버에서 병렬로 줄인 상태입니다.
+                그래도 <strong>1~3분</strong> 정도는 정상일 수 있습니다.
+              </p>
+              <p>
+                화면이 그대로면 터미널에서 <code>uvicorn app.main:app</code> 가 떠 있는지, 파이썬 오류가 나지
+                않았는지 확인해 주세요. 브라우저는 최대 약 {PORTFOLIO_FETCH_TIMEOUT_MS / 60000}분 후 자동으로
+                시간 초과 메시지를 띄웁니다.
+              </p>
+            </>
+          ) : (
+            <span>실제 가격 데이터를 불러오고 백테스트를 계산 중입니다.</span>
+          )}
         </section>
       )}
 
@@ -668,13 +909,17 @@ export default function BacktestRunner() {
                 <article className="metric-card" key={label}>
                   <span>{label}</span>
                   <strong>{strategy}</strong>
-                  <p>단순 보유: {benchmark}</p>
+                  <p>
+                    {result.displayKind === 'portfolio'
+                      ? `동일 유니버스·초기 동일금액 buy&hold: ${benchmark}`
+                      : `단순 보유: ${benchmark}`}
+                  </p>
                 </article>
               ))}
             </div>
           </section>
 
-          {result.priceData && (
+          {result.priceData && result.priceData.length > 0 && (
             <section className="quant-section" aria-labelledby="price-title">
               <div className="section-head compact">
                 <div>
