@@ -4,7 +4,15 @@ from pydantic import BaseModel, Field
 
 
 class BacktestRequest(BaseModel):
-    strategyId: Literal["ma", "ma20", "ma60"] = "ma20"
+    strategyId: Literal[
+        "ma",
+        "ma20",
+        "ma60",
+        "golden-cross",
+        "regime-ma",
+        "low-per-quality",
+        "portfolio-rebalance",
+    ] = "ma20"
     symbol: str = Field(default="005930", min_length=5, max_length=12)
     symbolName: str = "삼성전자"
     startDate: str = "2023-01-01"
@@ -67,6 +75,9 @@ class DataQuality(BaseModel):
     maWarmupDays: int
     firstValidMaDate: str | None = None
     hasMissingOhlcv: bool
+    universeDescription: str | None = None
+    rebalanceMonths: int | None = None
+    strategyNote: str | None = None
 
 
 class BacktestResponse(BaseModel):
@@ -85,7 +96,8 @@ class BacktestResponse(BaseModel):
     buyAndHold: BuyAndHoldSummary
     dataSource: Literal["krx", "naver", "fdr"]
     dataQuality: DataQuality
-    priceData: list[PricePoint]
+    displayKind: Literal["single", "portfolio"] = "single"
+    priceData: list[PricePoint] = Field(default_factory=list)
     equityCurve: list[EquityPoint]
     drawdownCurve: list[DrawdownPoint]
     signals: list[TradeSignal]
