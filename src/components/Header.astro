@@ -2,13 +2,14 @@
 import SearchBox from './SearchBox.astro';
 
 type Props = {
-  active?: 'home' | 'stock' | 'quant';
+  active?: 'home' | 'stock' | 'quant' | 'backtest';
 };
 
 const { active = 'home' } = Astro.props;
 const navItems = [
   { href: '/stock/', label: '주식', key: 'stock' },
   { href: '/quant/', label: '퀀트', key: 'quant' },
+  { href: '/quant/backtest/', label: '백테스트 실험실', key: 'backtest' },
 ];
 ---
 
