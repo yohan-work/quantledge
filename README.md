@@ -26,6 +26,45 @@ Each chapter is written as a Markdown document under the `docs` directory. The s
 - Search across concepts and document sections
 - Section-level navigation with active table of contents highlighting
 - Simple reading-focused interface inspired by clean technical writing sites
+- Quant Backtest Lab at `/quant/backtest/` with a FastAPI backend for real price data experiments
+
+## Quant Backtest Lab
+
+The backtest lab is a learning and experiment tool. It is not an investment recommendation service, and past performance does not guarantee future returns.
+
+Current implementation:
+
+- Astro frontend for strategy inputs, loading/error states, result cards, charts, and signal tables
+- FastAPI backend under `backend/`
+- `pykrx` as the primary Korean stock data loader
+- `finance-datareader` fallback when the primary loader fails
+- pandas moving-average backtest with next-trading-day position shift
+
+Backend:
+
+```bash
+cd backend
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+export BACKTEST_PRICE_SOURCE=auto
+uvicorn app.main:app --reload --port 8000
+```
+
+Use `BACKTEST_PRICE_SOURCE=krx` with `KRX_ID` and `KRX_PW` when the backend should force KRX data. Without those credentials, `auto` skips the KRX path and falls back to pykrx's adjusted daily data path and FinanceDataReader. Local credentials can be placed in `backend/.env`; that file is ignored by git.
+
+Frontend:
+
+```bash
+PUBLIC_BACKTEST_API_URL=http://localhost:8000 npm run dev
+```
+
+Default experiment:
+
+- Strategy: moving-average strategy
+- Symbol: Samsung Electronics `005930`
+- Initial period: user-selected, default 20 trading days
+- API endpoint: `POST /api/backtest/run`
 
 ## Design Direction
 
