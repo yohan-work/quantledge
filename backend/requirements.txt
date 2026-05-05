@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+pandas
+numpy
+pykrx
+finance-datareader
+pydantic
+python-dateutil
