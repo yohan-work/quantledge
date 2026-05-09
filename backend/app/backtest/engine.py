@@ -2,6 +2,7 @@ from typing import cast
 
 from app.data.price_loader import load_price_data
 from app.data.ticker_loader import normalize_symbol
+from app.data.universe_loader import UniverseMarket
 from app.schemas.backtest import BacktestRequest
 from app.strategies.factor_universe_strategy import RankingMode, run_monthly_universe_factor_backtest
 from app.strategies.golden_cross_strategy import run_golden_cross_backtest
@@ -41,6 +42,17 @@ def run_backtest(request: BacktestRequest) -> dict:
     if request.strategyId in {"low-per-quality", "portfolio-rebalance"}:
         top_k = int(params.get("topK", params.get("top_k", 5)))
         min_tv = float(params.get("minAvgTradingValue", 5_000_000_000.0))
+        universe_size = int(params.get("universeSize", params.get("universe_size", 30)))
+        if universe_size < 1:
+            raise ValueError("universeSize는 1 이상이어야 합니다.")
+        if top_k > universe_size:
+            raise ValueError("편입 종목 수(topK)는 유니버스 크기보다 클 수 없습니다.")
+        universe_market = str(params.get("universeMarket", params.get("universe_market", "KOSPI"))).upper()
+        if universe_market not in ("KOSPI", "KOSDAQ", "ALL"):
+            raise ValueError("universeMarket은 KOSPI, KOSDAQ, ALL 중 하나여야 합니다.")
+        min_universe_tv = float(
+            params.get("minUniverseTradingValue", params.get("min_universe_trading_value", 5_000_000_000.0))
+        )
         raw_mode = params.get("rankingMode", params.get("ranking_mode"))
         if raw_mode is None:
             ranking_mode = "value_quality" if request.strategyId == "low-per-quality" else "momentum"
@@ -64,6 +76,9 @@ def run_backtest(request: BacktestRequest) -> dict:
             min_avg_trading_value=min_tv,
             ranking_mode=cast(RankingMode, ranking_mode),
             fundamental_lag_days=fund_lag,
+            universe_market=cast(UniverseMarket, universe_market),
+            universe_size=universe_size,
+            min_universe_trading_value=min_universe_tv,
         )
         result["strategyId"] = request.strategyId
         if request.strategyId == "portfolio-rebalance":

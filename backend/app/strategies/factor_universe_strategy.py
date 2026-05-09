@@ -19,20 +19,7 @@ import pandas as pd
 from app.backtest.metrics import calculate_cagr, calculate_mdd
 from app.data.fundamental_loader import build_fundamental_panel_asof, stack_metric_panel
 from app.data.price_loader import PriceLoadResult, load_price_data
-
-
-DEFAULT_UNIVERSE: list[tuple[str, str]] = [
-    ("005930", "삼성전자"),
-    ("000660", "SK하이닉스"),
-    ("373220", "LG에너지솔루션"),
-    ("207940", "삼성바이오로직스"),
-    ("005380", "현대차"),
-    ("000270", "기아"),
-    ("035420", "NAVER"),
-    ("035720", "카카오"),
-    ("068270", "셀트리온"),
-    ("005490", "POSCO홀딩스"),
-]
+from app.data.universe_loader import UniverseMarket, load_krx_market_cap_universe
 
 RankingMode = Literal["momentum", "value_quality"]
 
@@ -114,8 +101,20 @@ def run_monthly_universe_factor_backtest(
     momentum_skip: int = 21,
     ranking_mode: RankingMode = "momentum",
     fundamental_lag_days: int = 20,
+    universe_market: UniverseMarket = "KOSPI",
+    universe_size: int = 30,
+    min_universe_trading_value: float = 5_000_000_000.0,
 ) -> dict:
-    uni = universe or DEFAULT_UNIVERSE
+    universe_label_override = None
+    if universe is None:
+        uni, universe_label_override = load_krx_market_cap_universe(
+            reference_date=user_start_date,
+            market=universe_market,
+            top_n=universe_size,
+            min_trading_value=min_universe_trading_value,
+        )
+    else:
+        uni = universe
     symbols = [s for s, _ in uni]
     ext_start = _extended_start(user_start_date)
 
@@ -171,9 +170,14 @@ def run_monthly_universe_factor_backtest(
 
     first_alloc = False
     trade_events = 0
+    action_history = ["CASH"] * n
+    reason_history = ["첫 리밸런싱 전이라 현금 대기 중입니다."] * n
+    weight_history = np.zeros((n, n_sym))
 
     for i in range(1, n):
         cost_drag = 0.0
+        rebalanced = False
+        picked_names: list[str] = []
         if i - 1 >= min_rebalance_ix and month_end_flags[i - 1]:
             ix = i - 1
             eligible: list[tuple[float, int]] = []
@@ -217,6 +221,7 @@ def run_monthly_universe_factor_backtest(
                     inv = 1.0 / len(picked)
                     for j in picked:
                         w_new[j] = inv
+                    picked_names = [f"{uni[j][1]}({uni[j][0]})" for j in picked]
                 turnover = float(np.sum(np.abs(w_new - w_prev)))
                 if not first_alloc and np.sum(w_new) > 0:
                     turnover = max(turnover, 1.0)
@@ -225,12 +230,31 @@ def run_monthly_universe_factor_backtest(
                 w_prev = w_new.copy()
                 first_alloc = True
                 trade_events += 1
+                rebalanced = True
 
         if not first_alloc:
             r_p = 0.0
         else:
             r_p = float(np.dot(w, daily_ret[i])) - cost_drag
         strat_equity[i] = strat_equity[i - 1] * (1.0 + r_p)
+        weight_history[i] = w
+
+        if rebalanced:
+            action_history[i] = "BUY"
+            reason_history[i] = (
+                "월말 리밸런싱 반영일입니다. "
+                f"선정 종목: {', '.join(picked_names) if picked_names else '없음'}."
+            )
+        elif first_alloc:
+            action_history[i] = "HOLD"
+            current = [f"{uni[j][1]}({uni[j][0]})" for j, weight in enumerate(w) if weight > 0]
+            reason_history[i] = (
+                "직전 리밸런싱에서 정한 동일비중 포트폴리오를 유지합니다. "
+                f"현재 편입: {', '.join(current) if current else '없음'}."
+            )
+        else:
+            action_history[i] = "CASH"
+            reason_history[i] = "12-1 모멘텀 또는 팩터 계산에 필요한 워밍업 전이라 현금 대기 중입니다."
 
     out_dates = [d for d in dates if d >= user_start_date]
     if not out_dates:
@@ -268,8 +292,8 @@ def run_monthly_universe_factor_backtest(
         for k, d in enumerate(out_dates_list)
     ]
 
-    universe_label = ", ".join(f"{name}({code})" for code, name in uni[:4])
-    if len(uni) > 4:
+    universe_label = universe_label_override or ", ".join(f"{name}({code})" for code, name in uni[:4])
+    if universe_label_override is None and len(uni) > 4:
         universe_label += f" 외 {len(uni) - 4}종"
 
     if ranking_mode == "momentum":
@@ -288,18 +312,15 @@ def run_monthly_universe_factor_backtest(
     ref_col = 0
     for k, d in enumerate(out_dates_list):
         ix_g = start_idx + k
-        if ix_g > 0 and month_end_flags[ix_g - 1]:
-            reason = "월말 리밸런싱 반영일입니다. " + signal_note
-        else:
-            reason = signal_note
+        reason = f"{reason_history[ix_g]} {signal_note}"
         signals.append(
             {
                 "date": d,
-                "action": "HOLD",
+                "action": action_history[ix_g],
                 "close": float(close_arr[ix_g, ref_col]),
                 "movingAverage": None,
                 "ma20": None,
-                "position": 1 if first_alloc else 0,
+                "position": 1 if float(np.sum(weight_history[ix_g])) > 0 else 0,
                 "reason": reason,
             }
         )
