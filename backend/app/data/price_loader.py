@@ -99,7 +99,7 @@ def load_price_data_from_pykrx_krx(symbol: str, start_date: str, end_date: str) 
         to_pykrx_date(start_date),
         to_pykrx_date(end_date),
         symbol,
-        adjusted=False,
+        adjusted=True,
     )
 
     return _normalize_pykrx_frame(raw, "pykrx krx")

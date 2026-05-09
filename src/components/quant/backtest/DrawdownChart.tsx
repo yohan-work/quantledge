@@ -40,10 +40,13 @@ export default function DrawdownChart({ data, strategyLabel = '전략' }: Props)
             width={54}
           />
           <Tooltip
-            formatter={(value: number, _name, item) => [
-              percent(value),
-              item.dataKey === 'strategyDrawdown' ? strategyLabel : '단순 보유',
-            ]}
+            formatter={(value, _name, item) => {
+              const numericValue = typeof value === 'number' ? value : Number(value ?? 0);
+              return [
+                percent(numericValue),
+                item.dataKey === 'strategyDrawdown' ? strategyLabel : '단순 보유',
+              ];
+            }}
             labelFormatter={(label) => `날짜 ${label}`}
           />
           <Legend />

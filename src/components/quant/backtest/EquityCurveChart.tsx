@@ -37,14 +37,17 @@ export default function EquityCurveChart({ data, strategyLabel = '전략' }: Pro
             width={58}
           />
           <Tooltip
-            formatter={(value: number, _name, item) => [
-              new Intl.NumberFormat('ko-KR', {
-                style: 'currency',
-                currency: 'KRW',
-                maximumFractionDigits: 0,
-              }).format(value),
-              item.dataKey === 'strategyEquity' ? strategyLabel : '단순 보유',
-            ]}
+            formatter={(value, _name, item) => {
+              const numericValue = typeof value === 'number' ? value : Number(value ?? 0);
+              return [
+                new Intl.NumberFormat('ko-KR', {
+                  style: 'currency',
+                  currency: 'KRW',
+                  maximumFractionDigits: 0,
+                }).format(numericValue),
+                item.dataKey === 'strategyEquity' ? strategyLabel : '단순 보유',
+              ];
+            }}
             labelFormatter={(label) => `날짜 ${label}`}
           />
           <Legend />

@@ -85,6 +85,7 @@ def _strategy_note_value_quality(lag: int) -> str:
         "벤치마크는 동일 유니버스·동일 시점에 분할 매수한 뒤 비중을 더 이상 맞추지 않는 "
         "‘초기 동일금액 buy&hold’입니다. 밸류·퀄리티 모드는 pykrx 일별 투자지표(PER·PBR·EPS·BPS)를 사용하며, "
         f"리밸 시점보다 {lag}거래일 이전에 관측된 스냅샷만 사용합니다(asof·ffill). "
+        "시작일 이전 데이터는 지표 워밍업에만 쓰고, 실제 리밸런싱은 시작일 이후 월말부터 실행합니다. "
         "영업이익·회계 ROE·부채비율은 KRX 스냅샷에 없어 각각 EPS>0, EPS/BPS, (부채 미필터)로 대체했습니다. "
         "정밀 룩백은 OpenDART 등 별도 데이터가 필요합니다."
     )
@@ -93,7 +94,8 @@ def _strategy_note_value_quality(lag: int) -> str:
 def _strategy_note_momentum() -> str:
     return (
         "벤치마크는 동일 유니버스·동일 시점에 분할 매수한 뒤 비중을 더 이상 맞추지 않는 "
-        "‘초기 동일금액 buy&hold’입니다. 모멘텀 모드는 12-1 가격 수익률 순위입니다."
+        "‘초기 동일금액 buy&hold’입니다. 모멘텀 모드는 12-1 가격 수익률 순위입니다. "
+        "시작일 이전 데이터는 지표 워밍업에만 쓰고, 실제 리밸런싱은 시작일 이후 월말부터 실행합니다."
     )
 
 
@@ -205,7 +207,7 @@ def run_monthly_universe_factor_backtest(
         cost_drag = 0.0
         rebalanced = False
         picked_names: list[str] = []
-        if i - 1 >= min_rebalance_ix and month_end_flags[i - 1]:
+        if i - 1 >= min_rebalance_ix and dates[i - 1] >= user_start_date and month_end_flags[i - 1]:
             ix = i - 1
             eligible: list[tuple[float, int]] = []
             w_new = np.zeros(n_sym)
@@ -266,8 +268,6 @@ def run_monthly_universe_factor_backtest(
                         picked_names.append(f"현금 {top_k - len(picked)}/{top_k} 슬롯")
             turnover = float(np.sum(np.abs(w_new - w_prev)))
             if turnover > 0:
-                if not first_alloc and np.sum(w_new) > 0:
-                    turnover = max(turnover, 1.0)
                 cost_drag = turnover * commission_rate
                 leg_trade_count += int(np.count_nonzero(np.abs(w_new - w_prev) > 1e-12))
                 w = w_new
@@ -277,7 +277,6 @@ def run_monthly_universe_factor_backtest(
                 rebalanced = True
             elif not first_alloc and np.sum(w_new) > 0:
                 turnover = float(np.sum(np.abs(w_new - w_prev)))
-                turnover = max(turnover, 1.0)
                 cost_drag = turnover * commission_rate
                 leg_trade_count += int(np.count_nonzero(np.abs(w_new - w_prev) > 1e-12))
                 w = w_new
