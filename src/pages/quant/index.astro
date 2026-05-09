@@ -13,9 +13,24 @@ import { quantDocs } from '@/lib/docs';
       <div>
         <p class="eyebrow">Quant Strategy</p>
         <h1>퀀트</h1>
-        <p>유니버스, 팩터, 필터, 리밸런싱, 백테스트처럼 규칙 기반 투자에 필요한 개념을 정리합니다.</p>
+        <p>
+          퀀트 초보자가 전략을 이해하고, 백테스트로 검증한 뒤, 실제 투자 포트폴리오까지 구성하기 위한 개념을
+          정리합니다.
+        </p>
       </div>
       <SearchBox />
+    </section>
+    <section class="quant-grid two-col quant-hub-actions" aria-label="퀀트 주요 도구">
+      <a class="quant-card tool-link-card" href="/quant/backtest/">
+        <p class="eyebrow">Backtest Lab</p>
+        <h2>백테스트 실험실</h2>
+        <p>전략 하나를 선택해 과거 가격 데이터 기준 CAGR, MDD, 거래 횟수, 단순 보유 대비 성과를 확인합니다.</p>
+      </a>
+      <a class="quant-card tool-link-card" href="/quant/portfolio/">
+        <p class="eyebrow">Portfolio Lab</p>
+        <h2>실전 포트폴리오 구성기</h2>
+        <p>후보 전략을 조합해 내 투자금, 목표 MDD, 현금 비중 기준으로 실제 투자 금액표를 만듭니다.</p>
+      </a>
     </section>
     <DocList docs={quantDocs} />
   </main>

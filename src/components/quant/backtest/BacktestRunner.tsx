@@ -133,7 +133,7 @@ const strategyDefinitions: BacktestStrategyDefinition[] = [
     id: 'low-per-quality',
     name: '저PER + 퀄리티 (유니버스 팩터)',
     description:
-      '미리 정해진 대형주 10개만 대상으로, 매달 말 “거래 많이 되는 종목”만 남긴 뒤, 순위 방식에 따라 상위 K개를 골라 동일 비중으로 갈아탑니다. 기본은 PER 낮은 순(pykrx)·몇 가지 흑자 조건; 바꾸면 12개월 모멘텀 순위도 됩니다. 첫 실행은 데이터가 많아 1~3분 걸릴 수 있습니다.',
+      '백테스트 시작일 기준 KRX 시가총액·거래대금 조건으로 유니버스를 만들고, 매달 말 순위 방식에 따라 상위 K개를 동일비중으로 편입합니다. 기본은 PER 낮은 순(pykrx)·몇 가지 흑자 조건; 바꾸면 12-1 모멘텀 순위도 됩니다.',
     category: 'fundamental',
     enabled: true,
     parameters: [{ key: 'topK', label: '편입 종목 수', type: 'number', defaultValue: 5 }],
@@ -144,7 +144,7 @@ const strategyDefinitions: BacktestStrategyDefinition[] = [
     id: 'portfolio-rebalance',
     name: '월간 리밸런싱 (동일 엔진)',
     description:
-      '위와 같은 10종·월말 리밸 엔진입니다. 기본 순위만 “12-1 모멘텀”으로 두어, 저PER 전략과 나란히 비교하기 좋게 했습니다.',
+      'KRX 기반 유니버스 월말 리밸 엔진입니다. 기본 순위를 “12-1 모멘텀”으로 두어, 저PER 전략과 나란히 비교하기 좋게 했습니다.',
     category: 'portfolio',
     enabled: true,
     parameters: [{ key: 'topK', label: '편입 종목 수', type: 'number', defaultValue: 5 }],
@@ -190,34 +190,58 @@ const getErrorMessage = async (response: Response) => {
   return response.statusText;
 };
 
-const SignalRows = ({ signals }: { signals: TradeSignal[] }) => {
+const SignalRows = ({ signals, displayKind }: { signals: TradeSignal[]; displayKind?: BacktestResult['displayKind'] }) => {
   const allSignals = signals;
+  const isPortfolio = displayKind === 'portfolio';
 
   return (
     <section className="quant-section" aria-labelledby="signals-title">
       <div className="section-head compact">
         <div>
           <p className="eyebrow">Signals</p>
-          <h2 id="signals-title">전체 신호 검증</h2>
+          <h2 id="signals-title">{isPortfolio ? '리밸런싱 신호 검증' : '전체 신호 검증'}</h2>
         </div>
         <p className="data-range">{formatNumber(allSignals.length)}개 신호</p>
       </div>
       <div className="table-scroll signal-scroll">
         <table className="signal-table">
           <thead>
-            <tr>
-              <th>날짜</th>
-              <th>종가</th>
-              <th>이동평균선</th>
-              <th>포지션</th>
-              <th>액션</th>
-              <th>이유</th>
-            </tr>
+            {isPortfolio ? (
+              <tr>
+                <th>날짜</th>
+                <th>기준가격</th>
+                <th>포지션</th>
+                <th>상태</th>
+                <th>리밸런싱 근거</th>
+              </tr>
+            ) : (
+              <tr>
+                <th>날짜</th>
+                <th>종가</th>
+                <th>이동평균선</th>
+                <th>포지션</th>
+                <th>액션</th>
+                <th>이유</th>
+              </tr>
+            )}
           </thead>
           <tbody>
             {allSignals.map((signal) => (
               (() => {
                 const movingAverage = signal.movingAverage ?? signal.ma20 ?? null;
+                if (isPortfolio) {
+                  return (
+                    <tr key={signal.date}>
+                      <td>{signal.date}</td>
+                      <td>{formatCurrency(signal.close)}</td>
+                      <td>{signal.position === 1 ? '편입 종목 보유' : '현금 대기'}</td>
+                      <td>
+                        <span className={`signal-badge ${signal.action.toLowerCase()}`}>{signal.action}</span>
+                      </td>
+                      <td>{signal.reason}</td>
+                    </tr>
+                  );
+                }
                 return (
                   <tr key={signal.date}>
                     <td>{signal.date}</td>
@@ -263,8 +287,8 @@ const DataQualityCard = ({ result }: { result: BacktestResult }) => {
           </article>
           <article className="data-quality-card">
             <span>유니버스</span>
-            <strong>{quality.universeDescription ?? '기본 10종'}</strong>
-            <p>동일 거래일에 모든 종목 시세가 있을 때만 해당 날을 사용합니다.</p>
+            <strong>{quality.universeDescription ?? 'KRX 자동 유니버스'}</strong>
+            <p>백테스트 시작일 기준 KRX 시가총액·거래대금 조건으로 유니버스를 만들고, 이후 동일 종목군을 검증합니다.</p>
           </article>
           <article className="data-quality-card">
             <span>모멘텀·유동성 워밍업</span>
@@ -389,6 +413,9 @@ export default function BacktestRunner() {
     topK: 5,
     rankingMode: 'value_quality' as 'momentum' | 'value_quality',
     fundamentalLagDays: 20,
+    universeMarket: 'KOSPI' as 'KOSPI' | 'KOSDAQ' | 'ALL',
+    universeSize: 30,
+    minUniverseTradingValue: 5000000000,
     initialCapital: 10000000,
     commissionRate: 0,
   });
@@ -414,6 +441,8 @@ export default function BacktestRunner() {
       'signalPeriod',
       'topK',
       'fundamentalLagDays',
+      'universeSize',
+      'minUniverseTradingValue',
       'initialCapital',
       'commissionRate',
     ]);
@@ -534,6 +563,9 @@ export default function BacktestRunner() {
         topK: form.topK,
         rankingMode: form.rankingMode,
         fundamentalLagDays: form.fundamentalLagDays,
+        universeMarket: form.universeMarket,
+        universeSize: form.universeSize,
+        minUniverseTradingValue: form.minUniverseTradingValue,
       };
     }
     return { period: form.period };
@@ -581,7 +613,7 @@ export default function BacktestRunner() {
       setResult(null);
       if (exc instanceof Error && exc.name === 'AbortError') {
         setError(
-          `${PORTFOLIO_FETCH_TIMEOUT_MS / 60000}분 안에 응답이 없어 중단했습니다. 유니버스·밸류 모드는 pykrx로 10종목 가격·재무를 불러와 서버에서 시간이 오래 걸릴 수 있습니다. 백엔드 터미널 로그·네트워크·방화벽을 확인하거나, 기간을 짧게(예: 1년) 줄여 다시 시도해 보세요.`,
+          `${PORTFOLIO_FETCH_TIMEOUT_MS / 60000}분 안에 응답이 없어 중단했습니다. KRX 유니버스 크기가 크거나 밸류 모드이면 가격·재무 데이터를 많이 불러와 시간이 오래 걸릴 수 있습니다. 백엔드 터미널 로그·네트워크·방화벽을 확인하거나, 유니버스 크기와 기간을 줄여 다시 시도해 보세요.`,
         );
       } else {
         setError(exc instanceof Error ? exc.message : '백테스트 실행 중 오류가 발생했습니다.');
@@ -739,6 +771,42 @@ export default function BacktestRunner() {
             {portfolioStrategyIds.has(form.strategyId) && (
               <>
                 <label>
+                  <span>KRX 유니버스 시장</span>
+                  <select
+                    value={form.universeMarket}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        universeMarket: event.target.value as 'KOSPI' | 'KOSDAQ' | 'ALL',
+                      }))
+                    }
+                  >
+                    <option value="KOSPI">KOSPI</option>
+                    <option value="KOSDAQ">KOSDAQ</option>
+                    <option value="ALL">KOSPI + KOSDAQ</option>
+                  </select>
+                </label>
+                <label>
+                  <span>KRX 유니버스 크기</span>
+                  <input
+                    type="number"
+                    min="5"
+                    max="100"
+                    value={form.universeSize}
+                    onChange={(event) => updateField('universeSize', event.target.value)}
+                  />
+                </label>
+                <label>
+                  <span>유니버스 기준 거래대금</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1000000000"
+                    value={form.minUniverseTradingValue}
+                    onChange={(event) => updateField('minUniverseTradingValue', event.target.value)}
+                  />
+                </label>
+                <label>
                   <span>순위 방식</span>
                   <select
                     value={form.rankingMode}
@@ -804,7 +872,7 @@ export default function BacktestRunner() {
           </button>
           <p className="form-help">
             {portfolioStrategyIds.has(form.strategyId)
-              ? '고정 10종·월말 리밸 전략입니다. 종목 입력은 필요 없습니다. 백엔드가 pykrx로 10번(가격) + 밸류 모드면 10번(투자지표) 정도 호출하므로 첫 응답이 1~3분 걸릴 수 있습니다. 백엔드 터미널이 꺼져 있으면 영원히 로딩처럼 보입니다.'
+              ? 'KRX 기준일 시가총액 상위 유니버스를 자동으로 만들고 월말 리밸런싱합니다. 종목 입력은 필요 없습니다. 유니버스 크기가 클수록 가격·투자지표 호출이 늘어 첫 응답이 오래 걸릴 수 있습니다.'
               : '종목명을 2글자 이상 입력하면 KRX 종목 목록에서 코드를 찾습니다. 후보가 여러 개면 아래에서 선택하세요.'}
           </p>
           <div className="period-presets" aria-label="백테스트 기간 빠른 선택">
@@ -860,8 +928,8 @@ export default function BacktestRunner() {
             <>
               <strong>유니버스 백테스트 진행 중</strong>
               <p>
-                10개 종목에 대해 pykrx로 가격을 모으고, 밸류·퀄리티 모드이면 종목마다 PER·EPS 등 투자지표까지
-                가져옵니다. 순차 호출이었을 때는 수 분 걸리기도 해서, 지금은 서버에서 병렬로 줄인 상태입니다.
+                KRX 기준 유니버스를 만든 뒤 각 종목 가격을 모으고, 밸류·퀄리티 모드이면 종목마다 PER·EPS 등 투자지표까지
+                가져옵니다. 유니버스 크기가 클수록 데이터 호출이 많아집니다.
                 그래도 <strong>1~3분</strong> 정도는 정상일 수 있습니다.
               </p>
               <p>
@@ -901,7 +969,8 @@ export default function BacktestRunner() {
                 <h2 id="summary-title">결과 요약</h2>
               </div>
               <p className="data-range">
-                {result.startDate} - {result.endDate} · {formatNumber(result.priceData?.length ?? 0)} 거래일
+                {result.startDate} - {result.endDate} ·{' '}
+                {formatNumber(result.dataQuality?.tradingDayCount ?? result.priceData?.length ?? 0)} 거래일
               </p>
             </div>
             <div className="metric-grid">
@@ -957,7 +1026,7 @@ export default function BacktestRunner() {
             <DrawdownChart data={result.drawdownCurve} />
           </section>
 
-          <SignalRows signals={result.signals} />
+          <SignalRows signals={result.signals} displayKind={result.displayKind} />
         </>
       )}
     </>

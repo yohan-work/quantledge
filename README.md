@@ -1,21 +1,21 @@
 # Quantledge
 
-Quantledge is a learning archive for studying stock market fundamentals and quantitative investing concepts.
+Quantledge is a personal quant portfolio lab for learning stock and quant basics, testing strategy ideas, and turning backtest results into practical portfolio allocations.
 
-The project is designed as a structured reference site for organizing personal study notes, definitions, strategy ideas, and backtesting concepts. Its main purpose is to make stock and quant investing terminology easier to review, search, and connect while building a stronger foundation for data-driven investing.
+The project keeps structured study notes, but the main product direction is the backtest and portfolio workflow: learn the minimum concepts needed, test strategy candidates, compare risk and return, then design a portfolio that can be used for real investing decisions.
 
 ## Purpose
 
-This archive focuses on understanding investment concepts deeply before applying them in practice.
+This project focuses on helping a beginner move from terminology to practical portfolio construction.
 
-The content starts from basic stock market terminology and gradually expands into quantitative investing topics such as factor-based strategies, portfolio construction, rebalancing, and backtesting.
+The content starts from basic stock market terminology and gradually expands into quantitative investing topics such as factor-based strategies, portfolio construction, rebalancing, and backtesting. The goal is not to master every strategy first, but to understand enough to run practical backtests and judge whether a strategy is usable.
 
 ## Content Structure
 
 The site separates the learning material into two main categories.
 
 - Stock: basic market concepts, trading terms, price terms, chart concepts, financial indicators, and performance terminology.
-- Quant: quantitative investing concepts, strategy design, factor selection, data requirements, and backtesting foundations.
+- Quant: quantitative investing concepts, strategy design, factor selection, data requirements, backtesting foundations, and portfolio construction.
 
 Each chapter is written as a Markdown document under the `docs` directory. The site turns those documents into readable pages with navigation, table of contents, and search support.
 
@@ -26,11 +26,12 @@ Each chapter is written as a Markdown document under the `docs` directory. The s
 - Search across concepts and document sections
 - Section-level navigation with active table of contents highlighting
 - Simple reading-focused interface inspired by clean technical writing sites
-- Quant Backtest Lab at `/quant/backtest/` with a FastAPI backend for real price data experiments
+- Quant Backtest Lab at `/quant/backtest/` with a FastAPI backend for real price data backtests
+- Portfolio Lab at `/quant/portfolio/` for turning candidate strategies into target allocations and investment amounts
 
 ## Quant Backtest Lab
 
-The backtest lab is a learning and experiment tool. It is not an investment recommendation service, and past performance does not guarantee future returns.
+The backtest lab is a practical verification tool. It is not an investment recommendation service, and past performance does not guarantee future returns.
 
 Current implementation:
 
@@ -59,12 +60,24 @@ Frontend:
 PUBLIC_BACKTEST_API_URL=http://localhost:8000 npm run dev
 ```
 
-Default experiment:
+Default backtest:
 
 - Strategy: moving-average strategy
 - Symbol: Samsung Electronics `005930`
 - Initial period: user-selected, default 20 trading days
 - API endpoint: `POST /api/backtest/run`
+
+## Portfolio Lab
+
+The portfolio lab is a first practical bridge from backtest results to real allocation planning.
+
+Current implementation:
+
+- Input total capital, target MDD, minimum cash weight, and risk profile
+- Select candidate strategies such as Regime MA, Golden Cross, Low PER + Quality, TQQQ + Cash Rebalancing, and Value Rebalancing
+- Calculate draft weights, investment amounts, estimated portfolio CAGR, estimated MDD, and a pre-investment checklist
+
+The current Portfolio Lab uses placeholder strategy metrics for planning. A later version should connect directly to saved backtest results.
 
 ## Design Direction
 
@@ -74,6 +87,6 @@ The visual system uses a restrained palette based on white, black, gray, and a s
 
 ## Project Scope
 
-Quantledge is not intended to provide investment advice or trading recommendations.
+Quantledge is not intended to provide investment advice, trading recommendations, or automated order execution.
 
-It is a personal educational archive for organizing concepts, improving understanding, and preparing for future quantitative investing experiments.
+It is a personal learning and portfolio construction environment for building enough understanding to run backtests and design a portfolio that still requires the user's final judgment.
