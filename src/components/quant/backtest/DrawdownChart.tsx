@@ -12,6 +12,7 @@ import type { DrawdownPoint } from '@/lib/backtest/types';
 
 type Props = {
   data: DrawdownPoint[];
+  strategyLabel?: string;
 };
 
 const percent = (value: number) =>
@@ -20,7 +21,7 @@ const percent = (value: number) =>
     maximumFractionDigits: 0,
   }).format(value);
 
-export default function DrawdownChart({ data }: Props) {
+export default function DrawdownChart({ data, strategyLabel = '전략' }: Props) {
   return (
     <div className="chart-frame" aria-label="Drawdown 차트">
       <ResponsiveContainer width="100%" height={320}>
@@ -39,9 +40,9 @@ export default function DrawdownChart({ data }: Props) {
             width={54}
           />
           <Tooltip
-            formatter={(value: number, name) => [
+            formatter={(value: number, _name, item) => [
               percent(value),
-              name === 'strategyDrawdown' ? '20일선 전략' : '단순 보유',
+              item.dataKey === 'strategyDrawdown' ? strategyLabel : '단순 보유',
             ]}
             labelFormatter={(label) => `날짜 ${label}`}
           />
@@ -49,7 +50,7 @@ export default function DrawdownChart({ data }: Props) {
           <Line
             type="monotone"
             dataKey="strategyDrawdown"
-            name="20일선 전략"
+            name={strategyLabel}
             stroke="#1769ff"
             strokeWidth={2}
             dot={false}

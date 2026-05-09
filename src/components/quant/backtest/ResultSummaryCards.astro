@@ -11,6 +11,7 @@ const buyAndHoldFinalCapital = result.buyAndHold?.finalCapital ?? result.buyAndH
 const buyAndHoldTotalReturn = result.buyAndHold?.totalReturn ?? result.buyAndHoldTotalReturn ?? 0;
 const buyAndHoldCagr = result.buyAndHold?.cagr ?? result.buyAndHoldCagr ?? 0;
 const buyAndHoldMdd = result.buyAndHold?.mdd ?? result.buyAndHoldMdd ?? 0;
+const portfolioStats = result.portfolioStats;
 const rows = [
   {
     label: '최종 자산',
@@ -42,7 +43,21 @@ const rows = [
     strategy: formatPercent(result.excessReturn ?? result.finalCapital / buyAndHoldFinalCapital - 1),
     benchmark: '기준',
   },
-];
+  portfolioStats
+    ? {
+        label: '평균 현금비중',
+        strategy: formatPercent(portfolioStats.averageCashWeight),
+        benchmark: `최대 ${formatPercent(portfolioStats.maxCashWeight)}`,
+      }
+    : null,
+  portfolioStats
+    ? {
+        label: '평균 편입종목 수',
+        strategy: `${portfolioStats.averageHoldingCount.toFixed(1)}개`,
+        benchmark: `${formatNumber(portfolioStats.minHoldingCount)}~${formatNumber(portfolioStats.maxHoldingCount)}개`,
+      }
+    : null,
+].filter((row): row is { label: string; strategy: string; benchmark: string } => row !== null);
 ---
 
 <section class="quant-section" aria-labelledby="summary-title">
