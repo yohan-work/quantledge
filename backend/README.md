@@ -82,5 +82,15 @@ npm run dev
 - `topK`: number of holdings
 - `rankingMode`: `momentum` (12-1 price momentum) or `value_quality` (pykrx PER/PBR/EPS/BPS with lag)
 - `fundamentalLagDays`: trading-day lag for the fundamental snapshot when using `value_quality` (default 20)
+- `universeMarket`: `KOSPI`, `KOSDAQ`, or `ALL` (default `KOSPI`)
+- `universeSize`: number of KRX market-cap ranked candidates to load at the requested start date (default 30)
+- `minUniverseTradingValue`: minimum KRX reference-date trading value for the initial universe (default 5,000,000,000 KRW)
+- `useMarketTrendFilter`: when true, holds cash unless the selected market index is above its moving average
+- `marketTrendIndex`: `KOSPI` or `KOSDAQ` for the market filter (default `KOSPI`)
+- `marketTrendPeriod`: moving-average period for the market filter (default 200)
+- `useIndividualTrendFilter`: when true, only ranks/holds candidates above their own moving average
+- `individualTrendPeriod`: moving-average period for individual candidates (default 120)
 
-The service is for learning and backtest experiments only. It is not an investment recommendation system.
+Portfolio strategies no longer use a hard-coded sample universe. The backend builds the universe from KRX market-cap data at the requested start date or the nearest prior trading day, then applies the factor and rebalancing rules to that universe.
+
+The service is for personal backtest and portfolio construction support only. It is not an investment recommendation system.
