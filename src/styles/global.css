@@ -780,7 +780,8 @@ a {
   font-weight: 760;
 }
 
-.form-grid input {
+.form-grid input,
+.form-grid select {
   width: 100%;
   min-height: 42px;
   padding: 0 12px;
@@ -791,7 +792,8 @@ a {
   font: inherit;
 }
 
-.form-grid input:focus {
+.form-grid input:focus,
+.form-grid select:focus {
   border-color: var(--blue);
   outline: 3px solid var(--blue-soft);
 }
@@ -1001,6 +1003,190 @@ a {
   border-radius: 7px;
   color: #b42318;
   font-size: 14px;
+}
+
+.quant-hub-actions {
+  margin: 10px 0 28px;
+}
+
+.tool-link-card {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.tool-link-card:hover {
+  border-color: #cfe0ff;
+  box-shadow: 0 8px 24px rgba(17, 19, 24, 0.06);
+}
+
+.tool-link-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1.65;
+}
+
+.portfolio-page {
+  display: grid;
+  gap: 18px;
+}
+
+.portfolio-form {
+  display: grid;
+  gap: 16px;
+}
+
+.portfolio-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.portfolio-summary-grid span {
+  display: grid;
+  gap: 6px;
+  min-height: 92px;
+  padding: 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.portfolio-summary-grid strong {
+  color: var(--text);
+  font-size: 22px;
+  line-height: 1.2;
+}
+
+.portfolio-summary-grid .good strong {
+  color: #047857;
+}
+
+.portfolio-summary-grid .warn strong {
+  color: #b42318;
+}
+
+.portfolio-status {
+  margin: 14px 0 0;
+  padding: 12px 14px;
+  border-radius: 8px;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.portfolio-status.good {
+  background: #ecfdf3;
+  border: 1px solid #abefc6;
+  color: #047857;
+}
+
+.portfolio-status.warn {
+  background: #fff2f0;
+  border: 1px solid #ffd6d1;
+  color: #b42318;
+}
+
+.portfolio-strategy-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.portfolio-strategy-grid button {
+  display: grid;
+  gap: 8px;
+  min-height: 220px;
+  padding: 16px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.portfolio-strategy-grid button.selected {
+  background: var(--blue-soft);
+  border-color: #cfe0ff;
+}
+
+.portfolio-strategy-grid span {
+  color: var(--blue);
+  font-size: 12px;
+  font-weight: 760;
+}
+
+.portfolio-strategy-grid strong {
+  font-size: 17px;
+  line-height: 1.25;
+}
+
+.portfolio-strategy-grid p,
+.portfolio-strategy-grid small {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.portfolio-strategy-grid small {
+  align-self: end;
+  font-weight: 700;
+}
+
+.portfolio-table {
+  width: 100%;
+  min-width: 780px;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.portfolio-table th,
+.portfolio-table td {
+  padding: 14px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+}
+
+.portfolio-table th {
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 760;
+}
+
+.execution-checklist {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.execution-checklist label {
+  display: flex;
+  gap: 10px;
+  min-height: 58px;
+  padding: 13px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.execution-checklist input {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  accent-color: var(--blue);
 }
 
 .chart-reading-notes {
@@ -1294,6 +1480,9 @@ a {
   .quant-grid.two-col,
   .metric-grid,
   .data-quality-grid,
+  .portfolio-strategy-grid,
+  .portfolio-summary-grid,
+  .execution-checklist,
   .chart-reading-notes,
   .note-grid,
   .future-list {
@@ -1403,6 +1592,9 @@ a {
   .condition-grid,
   .metric-grid,
   .data-quality-grid,
+  .portfolio-strategy-grid,
+  .portfolio-summary-grid,
+  .execution-checklist,
   .chart-reading-notes,
   .note-grid,
   .future-list {
