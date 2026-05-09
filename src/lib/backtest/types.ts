@@ -63,6 +63,13 @@ export type BacktestResult = {
     cagr: number;
     mdd: number;
   };
+  portfolioStats?: {
+    averageCashWeight: number;
+    maxCashWeight: number;
+    averageHoldingCount: number;
+    minHoldingCount: number;
+    maxHoldingCount: number;
+  } | null;
   dataSource?: 'krx' | 'naver' | 'fdr';
   displayKind?: 'single' | 'portfolio';
   dataQuality?: {
@@ -108,5 +115,5 @@ export type BacktestRunRequest = {
   endDate: string;
   initialCapital: number;
   commissionRate: number;
-  parameters: Record<string, number | string>;
+  parameters: Record<string, number | string | boolean>;
 };
