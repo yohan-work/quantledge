@@ -18,7 +18,7 @@ import pandas as pd
 
 from app.backtest.metrics import calculate_cagr, calculate_mdd
 from app.data.fundamental_loader import build_fundamental_panel_asof, stack_metric_panel
-from app.data.price_loader import PriceLoadResult, load_price_data
+from app.data.price_loader import PriceLoadResult, load_index_price_data, load_price_data
 from app.data.universe_loader import UniverseMarket, load_krx_market_cap_universe
 
 RankingMode = Literal["momentum", "value_quality"]
@@ -36,7 +36,11 @@ def _load_universe_close_matrix(
     *,
     max_workers: int = 6,
 ) -> tuple[pd.DataFrame, pd.DataFrame, str]:
-    """종가·거래대금 매트릭스 (date x symbol). 모든 종목에 값이 있는 날만 유지."""
+    """종가·거래대금 매트릭스 (date x symbol).
+
+    실전 유니버스에는 기간 중 데이터가 끊긴 종목이 섞일 수 있다.
+    전체 기간을 유지하고, 리밸런싱 시점에 필요한 가격·유동성이 있는 종목만 편입 대상으로 삼는다.
+    """
     closes: dict[str, pd.Series] = {}
     tvalues: dict[str, pd.Series] = {}
     source = "naver"
@@ -61,13 +65,19 @@ def _load_universe_close_matrix(
 
     close_df = pd.DataFrame(closes).sort_index()
     tv_df = pd.DataFrame(tvalues).reindex(close_df.index)
-    valid = close_df.notna().all(axis=1) & tv_df.notna().all(axis=1)
+    valid = close_df.notna().any(axis=1) & tv_df.notna().any(axis=1)
     close_df = close_df.loc[valid]
     tv_df = tv_df.loc[valid]
     if close_df.empty:
-        raise ValueError("유니버스 종목들이 겹치는 거래일 데이터가 없습니다. 기간을 늘려 보세요.")
+        raise ValueError("유니버스 종목들의 거래일 데이터가 없습니다. 기간이나 유니버스 조건을 확인해 주세요.")
 
     return close_df, tv_df, source
+
+
+def _clean_float(value: float) -> float:
+    if not np.isfinite(value):
+        return 0.0
+    return float(value)
 
 
 def _strategy_note_value_quality(lag: int) -> str:
@@ -104,6 +114,11 @@ def run_monthly_universe_factor_backtest(
     universe_market: UniverseMarket = "KOSPI",
     universe_size: int = 30,
     min_universe_trading_value: float = 5_000_000_000.0,
+    use_market_trend_filter: bool = False,
+    market_trend_index: str = "KOSPI",
+    market_trend_period: int = 200,
+    use_individual_trend_filter: bool = False,
+    individual_trend_period: int = 120,
 ) -> dict:
     universe_label_override = None
     if universe is None:
@@ -124,6 +139,7 @@ def run_monthly_universe_factor_backtest(
     n_sym = len(symbols)
 
     avg_tv = tv_df.rolling(liquidity_window).mean()
+    individual_ma = close_df.rolling(individual_trend_period).mean()
     idx_dt = pd.to_datetime(close_df.index)
     ym = idx_dt.to_period("M")
     month_end_flags = np.zeros(n, dtype=bool)
@@ -134,13 +150,22 @@ def run_monthly_universe_factor_backtest(
 
     close_arr = close_df.to_numpy(dtype=float)
     avg_tv_arr = avg_tv.to_numpy(dtype=float)
+    individual_ma_arr = individual_ma.to_numpy(dtype=float)
+
+    market_ok = np.ones(n, dtype=bool)
+    if use_market_trend_filter:
+        index_load = load_index_price_data(market_trend_index, ext_start, user_end_date)
+        index_close = index_load.data.set_index("date")["close"].reindex(close_df.index).ffill()
+        index_ma = index_close.rolling(market_trend_period).mean()
+        market_ok = ((index_close > index_ma) & index_ma.notna()).fillna(False).to_numpy(dtype=bool)
 
     daily_ret = np.zeros((n, n_sym))
     for i in range(1, n):
         prev = close_arr[i - 1]
         cur = close_arr[i]
         with np.errstate(divide="ignore", invalid="ignore"):
-            daily_ret[i] = np.where(prev > 0, cur / prev - 1.0, 0.0)
+            valid_price = np.isfinite(prev) & np.isfinite(cur) & (prev > 0) & (cur > 0)
+            daily_ret[i] = np.where(valid_price, cur / prev - 1.0, 0.0)
 
     per_arr = pbr_arr = eps_arr = bps_arr = None
     if ranking_mode == "value_quality":
@@ -156,10 +181,11 @@ def run_monthly_universe_factor_backtest(
     strat_equity[0] = initial_capital
 
     start_idx = next((k for k, d in enumerate(dates) if d >= user_start_date), 0)
-    p_bh0 = close_arr[start_idx]
+    buy_hold_prices = close_df.ffill().fillna(0.0).to_numpy(dtype=float)
+    p_bh0 = buy_hold_prices[start_idx]
     notional_each_bh = initial_capital / n_sym
     shares_bh = np.where(p_bh0 > 0, notional_each_bh / p_bh0, 0.0)
-    bh_equity = np.array([float(np.dot(shares_bh, close_arr[i])) for i in range(n)])
+    bh_equity = np.array([float(np.dot(shares_bh, buy_hold_prices[i])) for i in range(n)])
 
     if ranking_mode == "momentum":
         min_rebalance_ix = momentum_long + momentum_skip
@@ -170,6 +196,7 @@ def run_monthly_universe_factor_backtest(
 
     first_alloc = False
     trade_events = 0
+    leg_trade_count = 0
     action_history = ["CASH"] * n
     reason_history = ["첫 리밸런싱 전이라 현금 대기 중입니다."] * n
     weight_history = np.zeros((n, n_sym))
@@ -181,16 +208,24 @@ def run_monthly_universe_factor_backtest(
         if i - 1 >= min_rebalance_ix and month_end_flags[i - 1]:
             ix = i - 1
             eligible: list[tuple[float, int]] = []
+            w_new = np.zeros(n_sym)
 
-            if ranking_mode == "momentum":
+            if use_market_trend_filter and not market_ok[ix]:
+                picked_names = []
+            elif ranking_mode == "momentum":
                 for j, _sym in enumerate(symbols):
                     liq = avg_tv_arr[ix, j]
                     if np.isnan(liq) or liq < min_avg_trading_value:
                         continue
                     p_old = close_arr[ix - momentum_skip, j]
                     p_long = close_arr[ix - momentum_skip - momentum_long, j]
-                    if p_old <= 0 or p_long <= 0:
+                    if not np.isfinite(p_old) or not np.isfinite(p_long) or p_old <= 0 or p_long <= 0:
                         continue
+                    if use_individual_trend_filter:
+                        p_now = close_arr[ix, j]
+                        p_ma = individual_ma_arr[ix, j]
+                        if not np.isfinite(p_now) or not np.isfinite(p_ma) or p_now <= p_ma:
+                            continue
                     mom = p_old / p_long - 1.0
                     eligible.append((mom, j))
                 eligible.sort(key=lambda x: x[0], reverse=True)
@@ -200,6 +235,11 @@ def run_monthly_universe_factor_backtest(
                     liq = avg_tv_arr[ix, j]
                     if np.isnan(liq) or liq < min_avg_trading_value:
                         continue
+                    if use_individual_trend_filter:
+                        p_now = close_arr[ix, j]
+                        p_ma = individual_ma_arr[ix, j]
+                        if not np.isfinite(p_now) or not np.isfinite(p_ma) or p_now <= p_ma:
+                            continue
                     per = per_arr[lag_ix, j] if per_arr is not None else np.nan
                     pbr = pbr_arr[lag_ix, j] if pbr_arr is not None else np.nan
                     eps = eps_arr[lag_ix, j] if eps_arr is not None else np.nan
@@ -216,16 +256,30 @@ def run_monthly_universe_factor_backtest(
 
             if eligible:
                 picked = [j for _, j in eligible[:top_k]]
-                w_new = np.zeros(n_sym)
                 if picked:
-                    inv = 1.0 / len(picked)
+                    # Top K는 목표 투자 슬롯 수다. 필터로 일부 슬롯이 비면 그 비중은 현금으로 둔다.
+                    inv = 1.0 / top_k
                     for j in picked:
                         w_new[j] = inv
                     picked_names = [f"{uni[j][1]}({uni[j][0]})" for j in picked]
-                turnover = float(np.sum(np.abs(w_new - w_prev)))
+                    if len(picked) < top_k:
+                        picked_names.append(f"현금 {top_k - len(picked)}/{top_k} 슬롯")
+            turnover = float(np.sum(np.abs(w_new - w_prev)))
+            if turnover > 0:
                 if not first_alloc and np.sum(w_new) > 0:
                     turnover = max(turnover, 1.0)
                 cost_drag = turnover * commission_rate
+                leg_trade_count += int(np.count_nonzero(np.abs(w_new - w_prev) > 1e-12))
+                w = w_new
+                w_prev = w_new.copy()
+                first_alloc = True
+                trade_events += 1
+                rebalanced = True
+            elif not first_alloc and np.sum(w_new) > 0:
+                turnover = float(np.sum(np.abs(w_new - w_prev)))
+                turnover = max(turnover, 1.0)
+                cost_drag = turnover * commission_rate
+                leg_trade_count += int(np.count_nonzero(np.abs(w_new - w_prev) > 1e-12))
                 w = w_new
                 w_prev = w_new.copy()
                 first_alloc = True
@@ -240,11 +294,15 @@ def run_monthly_universe_factor_backtest(
         weight_history[i] = w
 
         if rebalanced:
-            action_history[i] = "BUY"
-            reason_history[i] = (
-                "월말 리밸런싱 반영일입니다. "
-                f"선정 종목: {', '.join(picked_names) if picked_names else '없음'}."
-            )
+            if float(np.sum(w)) > 0:
+                action_history[i] = "BUY"
+                reason_history[i] = (
+                    "월말 리밸런싱 반영일입니다. "
+                    f"선정 종목: {', '.join(picked_names) if picked_names else '없음'}."
+                )
+            else:
+                action_history[i] = "SELL"
+                reason_history[i] = "방어 필터 또는 편입 조건 미충족으로 현금 대기합니다."
         elif first_alloc:
             action_history[i] = "HOLD"
             current = [f"{uni[j][1]}({uni[j][0]})" for j, weight in enumerate(w) if weight > 0]
@@ -278,6 +336,17 @@ def run_monthly_universe_factor_backtest(
     end_date = out_dates_list[-1]
     final_capital = float(eq_s[-1])
     buy_hold_final = float(eq_bh[-1])
+    out_weights = weight_history[start_idx:]
+    invested_weights = np.sum(out_weights, axis=1)
+    cash_weights = np.clip(1.0 - invested_weights, 0.0, 1.0)
+    holding_counts = np.count_nonzero(out_weights > 1e-12, axis=1)
+    portfolio_stats = {
+        "averageCashWeight": float(np.mean(cash_weights)),
+        "maxCashWeight": float(np.max(cash_weights)),
+        "averageHoldingCount": float(np.mean(holding_counts)),
+        "minHoldingCount": int(np.min(holding_counts)),
+        "maxHoldingCount": int(np.max(holding_counts)),
+    }
 
     equity_curve = [
         {"date": d, "strategyEquity": float(eq_s[k]), "buyAndHoldEquity": float(eq_bh[k])}
@@ -317,7 +386,7 @@ def run_monthly_universe_factor_backtest(
             {
                 "date": d,
                 "action": action_history[ix_g],
-                "close": float(close_arr[ix_g, ref_col]),
+                "close": _clean_float(close_arr[ix_g, ref_col]),
                 "movingAverage": None,
                 "ma20": None,
                 "position": 1 if float(np.sum(weight_history[ix_g])) > 0 else 0,
@@ -325,14 +394,21 @@ def run_monthly_universe_factor_backtest(
             }
         )
 
-    approx_leg_trades = trade_events * top_k * 2
-
     note_body = (
         _strategy_note_value_quality(fundamental_lag_days)
         if ranking_mode == "value_quality"
         else _strategy_note_momentum()
     )
     ranking_line = f"순위 방식: {ranking_mode}. "
+    filter_notes = []
+    if use_market_trend_filter:
+        filter_notes.append(f"시장 필터: {market_trend_index} {market_trend_period}일선 위에서만 투자.")
+    if use_individual_trend_filter:
+        filter_notes.append(
+            f"개별 필터: 종목 종가가 {individual_trend_period}일선 위일 때만 편입하고, "
+            "탈락한 Top K 슬롯은 현금으로 유지."
+        )
+    filter_line = " ".join(filter_notes)
 
     return {
         "strategyId": "low-per-quality",
@@ -346,13 +422,14 @@ def run_monthly_universe_factor_backtest(
         "totalReturn": final_capital / initial_capital - 1,
         "cagr": calculate_cagr(initial_capital, final_capital, start_date, end_date),
         "mdd": calculate_mdd(pd.Series(strategy_dd)),
-        "tradeCount": int(approx_leg_trades),
+        "tradeCount": int(leg_trade_count),
         "buyAndHold": {
             "finalCapital": buy_hold_final,
             "totalReturn": buy_hold_final / initial_capital - 1,
             "cagr": calculate_cagr(initial_capital, buy_hold_final, start_date, end_date),
             "mdd": calculate_mdd(pd.Series(bh_dd)),
         },
+        "portfolioStats": portfolio_stats,
         "priceData": [],
         "equityCurve": equity_curve,
         "drawdownCurve": drawdown_curve,
@@ -367,9 +444,9 @@ def run_monthly_universe_factor_backtest(
             "tradingDayCount": int(len(out_dates_list)),
             "maWarmupDays": int(warmup_display),
             "firstValidMaDate": out_dates_list[0] if len(out_dates_list) > warmup_display else None,
-            "hasMissingOhlcv": False,
+            "hasMissingOhlcv": bool(close_df.isna().any().any() or tv_df.isna().any().any()),
             "universeDescription": universe_label,
             "rebalanceMonths": int(trade_events),
-            "strategyNote": ranking_line + note_body,
+            "strategyNote": " ".join(part for part in [ranking_line, filter_line, note_body] if part),
         },
     }

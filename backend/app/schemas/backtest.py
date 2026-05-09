@@ -66,6 +66,14 @@ class BuyAndHoldSummary(BaseModel):
     mdd: float
 
 
+class PortfolioStats(BaseModel):
+    averageCashWeight: float
+    maxCashWeight: float
+    averageHoldingCount: float
+    minHoldingCount: int
+    maxHoldingCount: int
+
+
 class DataQuality(BaseModel):
     requestedStartDate: str
     requestedEndDate: str
@@ -94,6 +102,7 @@ class BacktestResponse(BaseModel):
     mdd: float
     tradeCount: int
     buyAndHold: BuyAndHoldSummary
+    portfolioStats: PortfolioStats | None = None
     dataSource: Literal["krx", "naver", "fdr"]
     dataQuality: DataQuality
     displayKind: Literal["single", "portfolio"] = "single"

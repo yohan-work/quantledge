@@ -159,3 +159,20 @@ def load_price_data(symbol: str, start_date: str, end_date: str) -> PriceLoadRes
             errors.append(f"{source}: {exc}")
 
     raise RuntimeError("All price data sources failed. " + " | ".join(errors))
+
+
+INDEX_SYMBOLS = {
+    "KOSPI": "1001",
+    "KOSDAQ": "2001",
+}
+
+
+def load_index_price_data(index: str, start_date: str, end_date: str) -> PriceLoadResult:
+    stock = _import_pykrx_stock()
+    index_code = INDEX_SYMBOLS.get(index.upper(), INDEX_SYMBOLS["KOSPI"])
+    raw = stock.get_index_ohlcv_by_date(
+        to_pykrx_date(start_date),
+        to_pykrx_date(end_date),
+        index_code,
+    )
+    return PriceLoadResult(source="krx", data=_normalize_pykrx_frame(raw, f"pykrx index {index_code}"))

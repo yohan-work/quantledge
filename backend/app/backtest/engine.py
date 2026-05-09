@@ -16,6 +16,14 @@ STRATEGY_PERIODS = {
 }
 
 
+def _as_bool(value) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "y", "on"}
+    return bool(value)
+
+
 def _build_data_quality(price_data, request: BacktestRequest, period: int) -> dict:
     first_valid_ma_date = None
     if len(price_data) >= period:
@@ -53,6 +61,15 @@ def run_backtest(request: BacktestRequest) -> dict:
         min_universe_tv = float(
             params.get("minUniverseTradingValue", params.get("min_universe_trading_value", 5_000_000_000.0))
         )
+        use_market_filter = _as_bool(params.get("useMarketTrendFilter", params.get("use_market_trend_filter", False)))
+        market_filter_index = str(params.get("marketTrendIndex", params.get("market_trend_index", "KOSPI"))).upper()
+        market_filter_period = int(params.get("marketTrendPeriod", params.get("market_trend_period", 200)))
+        use_individual_filter = _as_bool(
+            params.get("useIndividualTrendFilter", params.get("use_individual_trend_filter", False))
+        )
+        individual_filter_period = int(
+            params.get("individualTrendPeriod", params.get("individual_trend_period", 120))
+        )
         raw_mode = params.get("rankingMode", params.get("ranking_mode"))
         if raw_mode is None:
             ranking_mode = "value_quality" if request.strategyId == "low-per-quality" else "momentum"
@@ -79,6 +96,11 @@ def run_backtest(request: BacktestRequest) -> dict:
             universe_market=cast(UniverseMarket, universe_market),
             universe_size=universe_size,
             min_universe_trading_value=min_universe_tv,
+            use_market_trend_filter=use_market_filter,
+            market_trend_index=market_filter_index,
+            market_trend_period=market_filter_period,
+            use_individual_trend_filter=use_individual_filter,
+            individual_trend_period=individual_filter_period,
         )
         result["strategyId"] = request.strategyId
         if request.strategyId == "portfolio-rebalance":
