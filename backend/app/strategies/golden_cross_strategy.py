@@ -3,6 +3,7 @@ import pandas as pd
 
 from app.backtest.costs import CostModel
 from app.backtest.metrics import calculate_cagr, calculate_mdd
+from app.backtest.performance import build_performance_metrics
 
 
 def _clean_number(value: float | int | None) -> float | None:
@@ -76,6 +77,11 @@ def run_golden_cross_backtest(
     end_date = str(df.iloc[-1]["date"])
     final_capital = float(df.iloc[-1]["strategy_equity"])
     buy_hold_final = float(df.iloc[-1]["buy_hold_equity"])
+    strategy_performance = build_performance_metrics(
+        df["strategy_equity"],
+        df["strategy_return_after_cost"],
+    )
+    buy_hold_performance = build_performance_metrics(df["buy_hold_equity"], df["buy_hold_return"])
 
     price_points = [
         {
@@ -144,7 +150,9 @@ def run_golden_cross_backtest(
             "totalReturn": buy_hold_final / initial_capital - 1,
             "cagr": calculate_cagr(initial_capital, buy_hold_final, start_date, end_date),
             "mdd": calculate_mdd(df["buy_hold_drawdown"]),
+            **buy_hold_performance,
         },
+        **strategy_performance,
         "priceData": price_points,
         "equityCurve": equity_curve,
         "drawdownCurve": drawdown_curve,

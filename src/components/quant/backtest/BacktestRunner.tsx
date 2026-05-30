@@ -216,6 +216,11 @@ const resolveBuyAndHold = (result: BacktestResult) => ({
     result.buyAndHold?.totalReturn ?? result.buyAndHoldTotalReturn ?? 0,
   cagr: result.buyAndHold?.cagr ?? result.buyAndHoldCagr ?? 0,
   mdd: result.buyAndHold?.mdd ?? result.buyAndHoldMdd ?? 0,
+  annualizedVolatility: result.buyAndHold?.annualizedVolatility ?? 0,
+  sharpeRatio: result.buyAndHold?.sharpeRatio ?? 0,
+  winRate: result.buyAndHold?.winRate ?? 0,
+  maxConsecutiveLossDays: result.buyAndHold?.maxConsecutiveLossDays ?? 0,
+  recoveryDays: result.buyAndHold?.recoveryDays ?? null,
 });
 
 const sourceLabelMap: Record<string, string> = {
@@ -254,6 +259,15 @@ const buildBacktestExportText = (result: BacktestResult) => {
   const portfolioStatsLine = result.portfolioStats
     ? `- 포트폴리오: 평균 현금 ${formatPlainPercent(result.portfolioStats.averageCashWeight)} / 최대 현금 ${formatPlainPercent(result.portfolioStats.maxCashWeight)} / 평균 편입 ${result.portfolioStats.averageHoldingCount.toFixed(1)}개`
     : null;
+  const validation = result.validation;
+  const validationLines = validation
+    ? [
+        `- OOS 검증: split ${formatPlainPercent(validation.splitRatio)} / splitDate ${validation.splitDate}`,
+        `- OOS In-sample: CAGR ${formatPlainPercent(validation.inSample.cagr)} / MDD ${formatPlainPercent(validation.inSample.mdd)} / Sharpe ${validation.inSample.sharpeRatio.toFixed(2)}`,
+        `- OOS Out-of-sample: CAGR ${formatPlainPercent(validation.outOfSample.cagr)} / MDD ${formatPlainPercent(validation.outOfSample.mdd)} / Sharpe ${validation.outOfSample.sharpeRatio.toFixed(2)}`,
+        validation.note ? `- OOS 메모: ${validation.note}` : null,
+      ].filter((line): line is string => line !== null)
+    : [];
 
   return [
     `## ${result.strategyName}`,
@@ -262,9 +276,13 @@ const buildBacktestExportText = (result: BacktestResult) => {
     `- 데이터: ${dataSource}`,
     `- 최종 자산: ${formatCurrency(result.finalCapital)}`,
     `- 성과: CAGR ${formatPlainPercent(result.cagr)} / MDD ${formatPlainPercent(result.mdd)} / 총수익률 ${formatPlainPercent(result.totalReturn)}`,
+    `- 리스크: 변동성 ${formatPlainPercent(result.annualizedVolatility)} / Sharpe ${result.sharpeRatio.toFixed(2)} / 승률 ${formatPlainPercent(result.winRate)}`,
+    `- 손실 흐름: 최대 연속 손실일 ${formatNumber(result.maxConsecutiveLossDays)}일 / 회복기간 ${result.recoveryDays === null ? "-" : `${formatNumber(result.recoveryDays)}일`}`,
     `- 비교: ${benchmarkLabel} CAGR ${formatPlainPercent(buyAndHold.cagr)} / MDD ${formatPlainPercent(buyAndHold.mdd)} / 대비 ${formatPlainPercent(excessReturn)}`,
+    `- 비교 리스크: 변동성 ${formatPlainPercent(buyAndHold.annualizedVolatility)} / Sharpe ${buyAndHold.sharpeRatio.toFixed(2)} / 승률 ${formatPlainPercent(buyAndHold.winRate)}`,
     `- 거래 횟수: ${formatNumber(result.tradeCount)}회`,
     portfolioStatsLine,
+    ...validationLines,
     `- 판단: `,
     `- 메모: `,
   ]
@@ -376,6 +394,54 @@ const SignalRows = ({
           </tbody>
         </table>
       </div>
+    </section>
+  );
+};
+
+const ValidationSummary = ({ result }: { result: BacktestResult }) => {
+  const validation = result.validation;
+  if (!validation) return null;
+
+  return (
+    <section className="quant-section" aria-labelledby="validation-title">
+      <div className="section-head compact">
+        <div>
+          <p className="eyebrow">Validation</p>
+          <h2 id="validation-title">워크포워드 / OOS 검증</h2>
+        </div>
+        <p className="data-range">
+          split {formatPercent(validation.splitRatio)} · {validation.splitDate}
+        </p>
+      </div>
+      <div className="metric-grid">
+        <article className="metric-card">
+          <span>In-sample CAGR</span>
+          <strong>{formatPercent(validation.inSample.cagr)}</strong>
+          <p>
+            MDD {formatPercent(validation.inSample.mdd)} · Sharpe{" "}
+            {validation.inSample.sharpeRatio.toFixed(2)}
+          </p>
+        </article>
+        <article className="metric-card">
+          <span>Out-of-sample CAGR</span>
+          <strong>{formatPercent(validation.outOfSample.cagr)}</strong>
+          <p>
+            MDD {formatPercent(validation.outOfSample.mdd)} · Sharpe{" "}
+            {validation.outOfSample.sharpeRatio.toFixed(2)}
+          </p>
+        </article>
+        <article className="metric-card">
+          <span>OOS 승률</span>
+          <strong>{formatPercent(validation.outOfSample.winRate)}</strong>
+          <p>
+            거래횟수 {formatNumber(validation.outOfSample.tradeCount)}회 · 회복{" "}
+            {validation.outOfSample.recoveryDays === null
+              ? "-"
+              : `${formatNumber(validation.outOfSample.recoveryDays)}일`}
+          </p>
+        </article>
+      </div>
+      {validation.note && <p className="quality-warning">{validation.note}</p>}
     </section>
   );
 };
@@ -890,6 +956,31 @@ export default function BacktestRunner() {
           ],
           ["CAGR", formatPercent(result.cagr), formatPercent(buyAndHold.cagr)],
           ["MDD", formatPercent(result.mdd), formatPercent(buyAndHold.mdd)],
+          [
+            "연간 변동성",
+            formatPercent(result.annualizedVolatility),
+            formatPercent(buyAndHold.annualizedVolatility),
+          ],
+          [
+            "Sharpe",
+            result.sharpeRatio.toFixed(2),
+            buyAndHold.sharpeRatio.toFixed(2),
+          ],
+          [
+            "승률",
+            formatPercent(result.winRate),
+            formatPercent(buyAndHold.winRate),
+          ],
+          [
+            "최대 연속 손실일",
+            `${formatNumber(result.maxConsecutiveLossDays)}일`,
+            `${formatNumber(buyAndHold.maxConsecutiveLossDays)}일`,
+          ],
+          [
+            "회복기간",
+            result.recoveryDays === null ? "-" : `${formatNumber(result.recoveryDays)}일`,
+            buyAndHold.recoveryDays === null ? "-" : `${formatNumber(buyAndHold.recoveryDays)}일`,
+          ],
           ["거래 횟수", `${formatNumber(result.tradeCount)}회`, "0회"],
           [
             "단순 보유 대비",
@@ -1404,6 +1495,7 @@ export default function BacktestRunner() {
       {result && buyAndHold && (
         <>
           <DataQualityCard result={result} />
+          <ValidationSummary result={result} />
 
           <section className="quant-section" aria-labelledby="summary-title">
             <div className="section-head compact">

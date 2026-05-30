@@ -55,14 +55,57 @@ export type BacktestResult = {
   buyAndHoldCagr?: number;
   mdd: number;
   buyAndHoldMdd?: number;
+  annualizedVolatility: number;
+  sharpeRatio: number;
+  winRate: number;
+  maxConsecutiveLossDays: number;
+  recoveryDays: number | null;
   tradeCount: number;
-  winRate?: number;
   buyAndHold?: {
     finalCapital: number;
     totalReturn: number;
     cagr: number;
     mdd: number;
+    annualizedVolatility: number;
+    sharpeRatio: number;
+    winRate: number;
+    maxConsecutiveLossDays: number;
+    recoveryDays: number | null;
   };
+  validation?: {
+    enabled: boolean;
+    splitRatio: number;
+    splitDate: string;
+    inSample: {
+      startDate: string;
+      endDate: string;
+      finalCapital: number;
+      totalReturn: number;
+      cagr: number;
+      mdd: number;
+      annualizedVolatility: number;
+      sharpeRatio: number;
+      winRate: number;
+      maxConsecutiveLossDays: number;
+      recoveryDays: number | null;
+      tradeCount: number;
+    };
+    outOfSample: {
+      startDate: string;
+      endDate: string;
+      finalCapital: number;
+      totalReturn: number;
+      cagr: number;
+      mdd: number;
+      annualizedVolatility: number;
+      sharpeRatio: number;
+      winRate: number;
+      maxConsecutiveLossDays: number;
+      recoveryDays: number | null;
+      tradeCount: number;
+    };
+    note?: string | null;
+  } | null;
   portfolioStats?: {
     averageCashWeight: number;
     maxCashWeight: number;

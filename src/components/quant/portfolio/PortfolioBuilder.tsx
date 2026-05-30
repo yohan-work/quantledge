@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import type { BacktestResult, BacktestRunRequest } from '@/lib/backtest/types';
 
 type RiskProfile = 'conservative' | 'balanced' | 'aggressive';
 
@@ -6,63 +7,161 @@ type StrategyCandidate = {
   id: string;
   name: string;
   role: string;
-  kind: 'trend' | 'rebalancing' | 'factor' | 'cash';
-  cagr: number;
-  mdd: number;
+  kind: 'trend' | 'factor';
   rebalance: string;
   note: string;
+  buildRequest: (window: BacktestWindow) => BacktestRunRequest;
 };
+
+type BacktestWindow = {
+  startDate: string;
+  endDate: string;
+  commissionRate: number;
+  slippageRate: number;
+  sellTaxRate: number;
+};
+
+const apiBaseUrl = import.meta.env.PUBLIC_BACKTEST_API_URL ?? 'http://localhost:8000';
+
+const toDateInputValue = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const addYears = (date: Date, years: number) => {
+  const nextDate = new Date(date);
+  nextDate.setFullYear(nextDate.getFullYear() + years);
+  return nextDate;
+};
+
+const today = toDateInputValue(new Date());
+const defaultBacktestStartDate = toDateInputValue(addYears(new Date(), -3));
 
 const strategyCandidates: StrategyCandidate[] = [
   {
-    id: 'regime-ma',
-    name: '레짐 MA',
-    role: '큰 하락장 회피',
+    id: 'ma20',
+    name: '20일 이동평균선',
+    role: '단기 추세 참여',
     kind: 'trend',
-    cagr: 0.16,
-    mdd: -0.18,
     rebalance: '일별 신호 확인',
-    note: '장기 추세가 나쁠 때 현금으로 빠지는 방어형 추세 전략',
+    note: '종가가 20일 이동평균선 위에 있을 때만 보유하는 단기 추세 전략',
+    buildRequest: (window) => ({
+      strategyId: 'ma20',
+      symbol: '005930',
+      symbolName: '삼성전자',
+      startDate: window.startDate,
+      endDate: window.endDate,
+      initialCapital: 10_000_000,
+      commissionRate: window.commissionRate,
+      parameters: {
+        period: 20,
+        slippageRate: window.slippageRate,
+        sellTaxRate: window.sellTaxRate,
+      },
+    }),
+  },
+  {
+    id: 'ma60',
+    name: '60일 이동평균선',
+    role: '중기 추세 참여',
+    kind: 'trend',
+    rebalance: '일별 신호 확인',
+    note: '종가가 60일 이동평균선 위에 있을 때만 보유하는 중기 추세 전략',
+    buildRequest: (window) => ({
+      strategyId: 'ma60',
+      symbol: '005930',
+      symbolName: '삼성전자',
+      startDate: window.startDate,
+      endDate: window.endDate,
+      initialCapital: 10_000_000,
+      commissionRate: window.commissionRate,
+      parameters: {
+        period: 60,
+        slippageRate: window.slippageRate,
+        sellTaxRate: window.sellTaxRate,
+      },
+    }),
   },
   {
     id: 'golden-cross',
     name: '20/60 골든크로스',
     role: '중기 추세 참여',
     kind: 'trend',
-    cagr: 0.13,
-    mdd: -0.24,
     rebalance: '일별 신호 확인',
-    note: '단기선이 장기선 위에 있을 때만 보유하는 기본 추세 전략',
+    note: '단기선이 장기선 위일 때만 보유하는 대표 추세 전략',
+    buildRequest: (window) => ({
+      strategyId: 'golden-cross',
+      symbol: '005930',
+      symbolName: '삼성전자',
+      startDate: window.startDate,
+      endDate: window.endDate,
+      initialCapital: 10_000_000,
+      commissionRate: window.commissionRate,
+      parameters: {
+        shortPeriod: 20,
+        longPeriod: 60,
+        slippageRate: window.slippageRate,
+        sellTaxRate: window.sellTaxRate,
+      },
+    }),
+  },
+  {
+    id: 'regime-ma',
+    name: '레짐 MA',
+    role: '큰 하락장 회피',
+    kind: 'trend',
+    rebalance: '일별 신호 확인',
+    note: '장기 추세가 나쁠 때 현금으로 빠지는 방어형 추세 전략',
+    buildRequest: (window) => ({
+      strategyId: 'regime-ma',
+      symbol: '005930',
+      symbolName: '삼성전자',
+      startDate: window.startDate,
+      endDate: window.endDate,
+      initialCapital: 10_000_000,
+      commissionRate: window.commissionRate,
+      parameters: {
+        filterPeriod: 200,
+        signalPeriod: 20,
+        slippageRate: window.slippageRate,
+        sellTaxRate: window.sellTaxRate,
+      },
+    }),
   },
   {
     id: 'low-per-quality',
     name: '저PER + 퀄리티',
     role: '종목 분산과 가치 팩터',
     kind: 'factor',
-    cagr: 0.14,
-    mdd: -0.28,
     rebalance: '월 1회',
-    note: '저평가와 이익 품질 조건으로 종목을 고르는 팩터 포트폴리오',
-  },
-  {
-    id: 'tqqq-cash',
-    name: 'TQQQ + 현금 리밸런싱',
-    role: '공격적 성장',
-    kind: 'rebalancing',
-    cagr: 0.25,
-    mdd: -0.45,
-    rebalance: '주 1회',
-    note: '레버리지 ETF를 현금과 섞어 공격성과 생존성을 함께 관리하는 후보',
-  },
-  {
-    id: 'value-rebalance',
-    name: '밸류 리밸런싱',
-    role: '하락 시 자동 매수',
-    kind: 'rebalancing',
-    cagr: 0.11,
-    mdd: -0.20,
-    rebalance: '월 1회',
-    note: '목표 비중에서 벗어나면 다시 맞추며 비싸질 때 줄이고 싸질 때 늘리는 구조',
+    note: '백테스트 시작일 기준 KRX 유니버스를 뽑아 저PER·퀄리티 필터로 선별하는 팩터 전략',
+    buildRequest: (window) => ({
+      strategyId: 'low-per-quality',
+      symbol: 'UNIVERSE',
+      symbolName: '유니버스 포트폴리오',
+      startDate: window.startDate,
+      endDate: window.endDate,
+      initialCapital: 10_000_000,
+      commissionRate: window.commissionRate,
+      parameters: {
+        topK: 5,
+        rankingMode: 'value_quality',
+        fundamentalLagDays: 20,
+        universeMarket: 'KOSPI',
+        universeSize: 30,
+        minUniverseTradingValue: 5_000_000_000,
+        minAvgTradingValue: 5_000_000_000,
+        useMarketTrendFilter: false,
+        marketTrendIndex: 'KOSPI',
+        marketTrendPeriod: 200,
+        useIndividualTrendFilter: false,
+        individualTrendPeriod: 120,
+        slippageRate: window.slippageRate,
+        sellTaxRate: window.sellTaxRate,
+      },
+    }),
   },
 ];
 
@@ -85,35 +184,150 @@ const formatPercent = (value: number) =>
     maximumFractionDigits: 1,
   }).format(value);
 
+const formatNumber = (value: number) =>
+  new Intl.NumberFormat('ko-KR', {
+    maximumFractionDigits: 0,
+  }).format(value);
+
+const formatDays = (value: number | null | undefined) =>
+  value === null || value === undefined ? '-' : `${formatNumber(value)}일`;
+
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
+
+const getErrorMessage = async (response: Response) => {
+  try {
+    const payload = await response.json();
+    const detail = payload.detail?.detail ?? payload.detail ?? payload.message;
+    if (typeof detail === 'string') return detail;
+    if (payload.detail?.message) return payload.detail.message;
+  } catch {
+    return response.statusText;
+  }
+  return response.statusText;
+};
 
 export default function PortfolioBuilder() {
   const [totalCapital, setTotalCapital] = useState(10_000_000);
   const [targetMdd, setTargetMdd] = useState(0.25);
   const [minCash, setMinCash] = useState(0.1);
   const [profile, setProfile] = useState<RiskProfile>('balanced');
-  const [selectedIds, setSelectedIds] = useState<string[]>(['regime-ma', 'low-per-quality', 'tqqq-cash']);
+  const [selectedIds, setSelectedIds] = useState<string[]>(['regime-ma', 'low-per-quality', 'golden-cross']);
+  const [backtestWindow, setBacktestWindow] = useState<BacktestWindow>({
+    startDate: defaultBacktestStartDate,
+    endDate: today,
+    commissionRate: 0,
+    slippageRate: 0,
+    sellTaxRate: 0,
+  });
+  const [candidateResults, setCandidateResults] = useState<Record<string, BacktestResult>>({});
+  const [isLoadingResults, setIsLoadingResults] = useState(false);
+  const [backtestError, setBacktestError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 240_000);
+
+    const run = async () => {
+      setIsLoadingResults(true);
+      setBacktestError(null);
+
+      try {
+        const settled = await Promise.allSettled(
+          strategyCandidates.map(async (candidate) => {
+            const request = candidate.buildRequest(backtestWindow);
+            const response = await fetch(`${apiBaseUrl}/api/backtest/run`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(request),
+              signal: controller.signal,
+            });
+
+            if (!response.ok) {
+              throw new Error(await getErrorMessage(response));
+            }
+
+            return (await response.json()) as BacktestResult;
+          }),
+        );
+
+        if (controller.signal.aborted) {
+          return;
+        }
+
+        const nextResults: Record<string, BacktestResult> = {};
+        const failures: string[] = [];
+        settled.forEach((entry, index) => {
+          const candidate = strategyCandidates[index];
+          if (entry.status === 'fulfilled') {
+            nextResults[candidate.id] = entry.value;
+          } else {
+            failures.push(candidate.name);
+          }
+        });
+
+        setCandidateResults(nextResults);
+        setBacktestError(
+          failures.length > 0
+            ? `일부 전략 백테스트에 실패했습니다: ${failures.join(', ')}`
+            : null,
+        );
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          setBacktestError(error instanceof Error ? error.message : '백테스트 결과를 불러오지 못했습니다.');
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setIsLoadingResults(false);
+        }
+      }
+    };
+
+    run();
+
+    return () => {
+      window.clearTimeout(timeoutId);
+      controller.abort();
+    };
+  }, [
+    backtestWindow.commissionRate,
+    backtestWindow.endDate,
+    backtestWindow.sellTaxRate,
+    backtestWindow.slippageRate,
+    backtestWindow.startDate,
+  ]);
 
   const selectedStrategies = useMemo(
-    () => strategyCandidates.filter((strategy) => selectedIds.includes(strategy.id)),
-    [selectedIds],
+    () =>
+      strategyCandidates
+        .filter((strategy) => selectedIds.includes(strategy.id))
+        .map((strategy) => ({
+          strategy,
+          result: candidateResults[strategy.id],
+        }))
+        .filter((entry): entry is { strategy: StrategyCandidate; result: BacktestResult } =>
+          Boolean(entry.result),
+        ),
+    [candidateResults, selectedIds],
   );
 
+  const allSelectedReady = selectedIds.every((id) => Boolean(candidateResults[id]));
+
   const allocation = useMemo(() => {
-    if (selectedStrategies.length === 0) return [];
+    if (selectedStrategies.length === 0 || !allSelectedReady) return [];
 
     const availableWeight = 1 - minCash;
     const config = profileConfig[profile];
-    const rawScores = selectedStrategies.map((strategy) => {
-      const riskPenalty = Math.max(Math.abs(strategy.mdd), 0.01);
-      const returnScore = Math.max(strategy.cagr, 0.01) ** config.growthTilt;
+    const rawScores = selectedStrategies.map(({ result }) => {
+      const riskPenalty = Math.max(Math.abs(result.mdd), 0.01);
+      const returnScore = Math.max(result.cagr, 0.01) ** config.growthTilt;
       const riskFit = clamp(targetMdd / riskPenalty, 0.25, 1.4);
       return returnScore * riskFit;
     });
     const scoreSum = rawScores.reduce((sum, score) => sum + score, 0) || 1;
 
-    let rows = selectedStrategies.map((strategy, index) => ({
+    let rows = selectedStrategies.map(({ strategy, result }, index) => ({
       strategy,
+      result,
       weight: Math.min((rawScores[index] / scoreSum) * availableWeight, config.maxStrategyWeight),
     }));
 
@@ -137,8 +351,10 @@ export default function PortfolioBuilder() {
         rebalance: row.strategy.rebalance,
         weight: row.weight,
         amount: Math.round(totalCapital * row.weight),
-        cagr: row.strategy.cagr,
-        mdd: row.strategy.mdd,
+        cagr: row.result.cagr,
+        mdd: row.result.mdd,
+        sharpeRatio: row.result.sharpeRatio,
+        winRate: row.result.winRate,
       })),
       {
         id: 'cash',
@@ -149,12 +365,15 @@ export default function PortfolioBuilder() {
         amount: Math.round(totalCapital * cashWeight),
         cagr: 0,
         mdd: 0,
+        sharpeRatio: 0,
+        winRate: 0,
       },
     ];
-  }, [minCash, profile, selectedStrategies, targetMdd, totalCapital]);
+  }, [allSelectedReady, minCash, profile, selectedStrategies, targetMdd, totalCapital]);
 
   const portfolioCagr = allocation.reduce((sum, row) => sum + row.weight * row.cagr, 0);
   const portfolioMdd = allocation.reduce((sum, row) => sum + row.weight * row.mdd, 0);
+  const portfolioSharpe = allocation.reduce((sum, row) => sum + row.weight * (row.sharpeRatio ?? 0), 0);
   const worstLossAmount = Math.round(totalCapital * Math.abs(portfolioMdd));
   const mddFits = Math.abs(portfolioMdd) <= targetMdd;
 
@@ -212,9 +431,85 @@ export default function PortfolioBuilder() {
               </select>
             </label>
           </div>
+          <div className="form-grid portfolio-backtest-grid">
+            <label>
+              <span>백테스트 시작일</span>
+              <input
+                type="date"
+                value={backtestWindow.startDate}
+                onChange={(event) =>
+                  setBacktestWindow((current) => ({
+                    ...current,
+                    startDate: event.target.value,
+                  }))
+                }
+              />
+            </label>
+            <label>
+              <span>백테스트 종료일</span>
+              <input
+                type="date"
+                value={backtestWindow.endDate}
+                onChange={(event) =>
+                  setBacktestWindow((current) => ({
+                    ...current,
+                    endDate: event.target.value,
+                  }))
+                }
+              />
+            </label>
+            <label>
+              <span>거래비용</span>
+              <input
+                type="number"
+                min="0"
+                max="0.05"
+                step="0.001"
+                value={backtestWindow.commissionRate}
+                onChange={(event) =>
+                  setBacktestWindow((current) => ({
+                    ...current,
+                    commissionRate: Number(event.target.value),
+                  }))
+                }
+              />
+            </label>
+            <label>
+              <span>슬리피지</span>
+              <input
+                type="number"
+                min="0"
+                max="0.05"
+                step="0.001"
+                value={backtestWindow.slippageRate}
+                onChange={(event) =>
+                  setBacktestWindow((current) => ({
+                    ...current,
+                    slippageRate: Number(event.target.value),
+                  }))
+                }
+              />
+            </label>
+            <label>
+              <span>매도세금</span>
+              <input
+                type="number"
+                min="0"
+                max="0.05"
+                step="0.001"
+                value={backtestWindow.sellTaxRate}
+                onChange={(event) =>
+                  setBacktestWindow((current) => ({
+                    ...current,
+                    sellTaxRate: Number(event.target.value),
+                  }))
+                }
+              />
+            </label>
+          </div>
           <p className="form-help">
-            v1은 실제 최적화 엔진이 아니라, 백테스트 결과를 보고 실전 투자 비중을 설계하는 수동 구성기입니다.
-            CAGR/MDD 값은 후보 전략을 비교하기 위한 예시값이며, 이후 백테스트 결과와 연결해 교체합니다.
+            아래 백테스트 기간과 비용을 기준으로 각 후보 전략을 다시 계산합니다. 후보 카드와 비중 계산은 실제 결과를
+            사용합니다.
           </p>
         </article>
 
@@ -231,6 +526,10 @@ export default function PortfolioBuilder() {
               예상 MDD
             </span>
             <span>
+              <strong>{portfolioSharpe.toFixed(2)}</strong>
+              가중 Sharpe
+            </span>
+            <span>
               <strong>{formatCurrency(worstLossAmount)}</strong>
               과거 기준 최대 손실액
             </span>
@@ -240,9 +539,11 @@ export default function PortfolioBuilder() {
             </span>
           </div>
           <p className={mddFits ? 'portfolio-status good' : 'portfolio-status warn'}>
-            {mddFits
-              ? '현재 조합은 입력한 목표 MDD 안에 들어옵니다.'
-              : '현재 조합은 목표 MDD를 넘습니다. 현금 비중을 늘리거나 공격 전략 비중을 줄여야 합니다.'}
+            {!allSelectedReady
+              ? '선택한 전략들의 실제 백테스트 결과를 불러오는 중입니다.'
+              : mddFits
+                ? '현재 조합은 입력한 목표 MDD 안에 들어옵니다.'
+                : '현재 조합은 목표 MDD를 넘습니다. 현금 비중을 늘리거나 공격 전략 비중을 줄여야 합니다.'}
           </p>
         </article>
       </section>
@@ -253,8 +554,12 @@ export default function PortfolioBuilder() {
             <p className="eyebrow">Strategy Candidates</p>
             <h2 id="candidate-title">후보 전략 선택</h2>
           </div>
-          <p className="data-range">{selectedStrategies.length}개 선택</p>
+          <p className="data-range">
+            {selectedIds.length}개 선택
+            {isLoadingResults ? ' · 실제 백테스트 계산 중' : ' · 실제 백테스트 반영 완료'}
+          </p>
         </div>
+        {backtestError && <p className="quality-warning">{backtestError}</p>}
         <div className="portfolio-strategy-grid">
           {strategyCandidates.map((strategy) => (
             <button
@@ -266,9 +571,21 @@ export default function PortfolioBuilder() {
               <span>{strategy.role}</span>
               <strong>{strategy.name}</strong>
               <p>{strategy.note}</p>
-              <small>
-                CAGR {formatPercent(strategy.cagr)} · MDD {formatPercent(strategy.mdd)} · {strategy.rebalance}
-              </small>
+              {candidateResults[strategy.id] ? (
+                <>
+                  <small>
+                    실제 CAGR {formatPercent(candidateResults[strategy.id].cagr)} · MDD {formatPercent(candidateResults[strategy.id].mdd)} · Sharpe {candidateResults[strategy.id].sharpeRatio.toFixed(2)}
+                  </small>
+                  <small>
+                    승률 {formatPercent(candidateResults[strategy.id].winRate)} · 회복 {formatDays(candidateResults[strategy.id].recoveryDays)}
+                  </small>
+                  <small>
+                    {candidateResults[strategy.id].dataSource?.toUpperCase() ?? 'API'} · {candidateResults[strategy.id].startDate} ~ {candidateResults[strategy.id].endDate}
+                  </small>
+                </>
+              ) : (
+                <small>{isLoadingResults ? '실제 백테스트 계산 중...' : '백테스트 결과를 불러올 수 없습니다.'}</small>
+              )}
             </button>
           ))}
         </div>
@@ -287,6 +604,7 @@ export default function PortfolioBuilder() {
               <tr>
                 <th>전략</th>
                 <th>역할</th>
+                <th>실제 성과</th>
                 <th>비중</th>
                 <th>투자 금액</th>
                 <th>리밸런싱</th>
@@ -297,6 +615,9 @@ export default function PortfolioBuilder() {
                 <tr key={row.id}>
                   <td>{row.name}</td>
                   <td>{row.role}</td>
+                  <td>
+                    CAGR {formatPercent(row.cagr)} · MDD {formatPercent(row.mdd)} · Sharpe {row.sharpeRatio.toFixed(2)}
+                  </td>
                   <td>{formatPercent(row.weight)}</td>
                   <td>{formatCurrency(row.amount)}</td>
                   <td>{row.rebalance}</td>
@@ -305,6 +626,12 @@ export default function PortfolioBuilder() {
             </tbody>
           </table>
         </div>
+        {!allSelectedReady && (
+          <p className="form-help">
+            선택한 전략들의 실제 백테스트 결과를 아직 모두 받지 못했습니다. 후보 카드가 채워지면 비중표도 자동으로
+            갱신됩니다.
+          </p>
+        )}
       </section>
 
       <section className="quant-section" aria-labelledby="checklist-title">

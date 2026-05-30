@@ -7,6 +7,7 @@ import pandas as pd
 
 from app.backtest.costs import parse_cost_model
 from app.backtest.engine import run_backtest
+from app.backtest.performance import build_performance_metrics
 from app.data.price_loader import PriceLoadResult, _finalize_price_frame
 from app.schemas.backtest import BacktestRequest
 
@@ -42,6 +43,21 @@ class PriceLoaderValidationTests(unittest.TestCase):
             _finalize_price_frame(frame)
 
 
+class PerformanceMetricTests(unittest.TestCase):
+    def test_build_performance_metrics_returns_expected_fields(self) -> None:
+        equity = pd.Series([100.0, 102.0, 101.0, 99.0, 105.0])
+        returns = equity.pct_change().fillna(0.0)
+
+        metrics = build_performance_metrics(equity, returns)
+
+        self.assertIn("annualizedVolatility", metrics)
+        self.assertIn("sharpeRatio", metrics)
+        self.assertIn("winRate", metrics)
+        self.assertIn("maxConsecutiveLossDays", metrics)
+        self.assertIn("recoveryDays", metrics)
+        self.assertGreaterEqual(metrics["annualizedVolatility"], 0)
+
+
 class BacktestEngineTests(unittest.TestCase):
     def _single_result(self) -> dict:
         return {
@@ -56,12 +72,22 @@ class BacktestEngineTests(unittest.TestCase):
             "totalReturn": 0.0,
             "cagr": 0.0,
             "mdd": 0.0,
+            "annualizedVolatility": 0.0,
+            "sharpeRatio": 0.0,
+            "winRate": 0.0,
+            "maxConsecutiveLossDays": 0,
+            "recoveryDays": None,
             "tradeCount": 0,
             "buyAndHold": {
                 "finalCapital": 1_000_000.0,
                 "totalReturn": 0.0,
                 "cagr": 0.0,
                 "mdd": 0.0,
+                "annualizedVolatility": 0.0,
+                "sharpeRatio": 0.0,
+                "winRate": 0.0,
+                "maxConsecutiveLossDays": 0,
+                "recoveryDays": None,
             },
             "priceData": [],
             "equityCurve": [],
@@ -82,12 +108,22 @@ class BacktestEngineTests(unittest.TestCase):
             "totalReturn": 0.0,
             "cagr": 0.0,
             "mdd": 0.0,
+            "annualizedVolatility": 0.0,
+            "sharpeRatio": 0.0,
+            "winRate": 0.0,
+            "maxConsecutiveLossDays": 0,
+            "recoveryDays": None,
             "tradeCount": 0,
             "buyAndHold": {
                 "finalCapital": 1_000_000.0,
                 "totalReturn": 0.0,
                 "cagr": 0.0,
                 "mdd": 0.0,
+                "annualizedVolatility": 0.0,
+                "sharpeRatio": 0.0,
+                "winRate": 0.0,
+                "maxConsecutiveLossDays": 0,
+                "recoveryDays": None,
             },
             "portfolioStats": {
                 "averageCashWeight": 0.1,
@@ -186,6 +222,70 @@ class BacktestEngineTests(unittest.TestCase):
         self.assertAlmostEqual(cost_model.sell_tax_rate, 0.001)
         self.assertEqual(result["strategyName"], "유니버스 월간 리밸런싱 (유동성·12-1 모멘텀)")
         self.assertIn("거래비용 모델", result["dataQuality"]["strategyNote"])
+
+    def test_run_backtest_builds_validation_summary_when_enabled(self) -> None:
+        price_frame = pd.DataFrame(
+            {
+                "date": [f"2024-01-{day:02d}" for day in range(2, 16)],
+                "open": [100.0 + day for day in range(14)],
+                "high": [110.0 + day for day in range(14)],
+                "low": [90.0 + day for day in range(14)],
+                "close": [100.0 + day for day in range(14)],
+                "volume": [1000.0 + day for day in range(14)],
+                "tradingValue": [100000.0 + day for day in range(14)],
+            }
+        )
+        request = BacktestRequest(
+            strategyId="ma20",
+            symbol="005930",
+            symbolName="삼성전자",
+            startDate="2024-01-02",
+            endDate="2024-01-15",
+            initialCapital=1_000_000,
+            commissionRate=0.0007,
+            parameters={
+                "period": 2,
+                "enableValidation": True,
+                "validationSplitRatio": 0.7,
+            },
+        )
+
+        def make_result(cagr: float, final_capital: float) -> dict:
+            return {
+                **self._single_result(),
+                "finalCapital": final_capital,
+                "totalReturn": final_capital / 1_000_000 - 1,
+                "cagr": cagr,
+                "mdd": -0.05,
+                "annualizedVolatility": 0.1,
+                "sharpeRatio": 1.2,
+                "winRate": 0.55,
+                "maxConsecutiveLossDays": 2,
+                "recoveryDays": 5,
+                "tradeCount": 3,
+                "equityCurve": [{"date": f"2024-01-{day:02d}"} for day in range(2, 16)],
+                "drawdownCurve": [],
+                "signals": [],
+            }
+
+        with patch("app.backtest.engine.load_price_data") as load_price_data_mock, patch(
+            "app.backtest.engine.run_moving_average_backtest"
+        ) as strategy_mock:
+            load_price_data_mock.return_value = PriceLoadResult(source="krx", data=price_frame)
+            strategy_mock.side_effect = [
+                make_result(0.12, 1_120_000.0),
+                make_result(0.08, 1_080_000.0),
+                make_result(0.04, 1_040_000.0),
+            ]
+
+            result = run_backtest(request)
+
+        self.assertIn("validation", result)
+        self.assertEqual(result["validation"]["splitRatio"], 0.7)
+        self.assertEqual(result["validation"]["splitDate"], "2024-01-11")
+        self.assertIn("outOfSample", result["validation"])
+        self.assertEqual(result["validation"]["inSample"]["startDate"], "2024-01-02")
+        self.assertEqual(result["validation"]["outOfSample"]["startDate"], "2024-01-12")
 
 
 if __name__ == "__main__":

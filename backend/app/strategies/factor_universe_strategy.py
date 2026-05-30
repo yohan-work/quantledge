@@ -18,6 +18,7 @@ import pandas as pd
 
 from app.backtest.metrics import calculate_cagr, calculate_mdd
 from app.backtest.costs import CostModel
+from app.backtest.performance import build_performance_metrics
 from app.data.fundamental_loader import build_fundamental_panel_asof, stack_metric_panel
 from app.data.price_loader import PriceLoadResult, load_index_price_data, load_price_data
 from app.data.universe_loader import UniverseMarket, load_krx_market_cap_universe
@@ -36,7 +37,7 @@ def _load_universe_close_matrix(
     end_date: str,
     *,
     max_workers: int = 6,
-) -> tuple[pd.DataFrame, pd.DataFrame, str]:
+) -> tuple[pd.DataFrame, pd.DataFrame, str, list[tuple[str, str]], str | None]:
     """종가·거래대금 매트릭스 (date x symbol).
 
     실전 유니버스에는 기간 중 데이터가 끊긴 종목이 섞일 수 있다.
@@ -72,7 +73,23 @@ def _load_universe_close_matrix(
     if close_df.empty:
         raise ValueError("유니버스 종목들의 거래일 데이터가 없습니다. 기간이나 유니버스 조건을 확인해 주세요.")
 
-    return close_df, tv_df, source
+    coverage = close_df.notna().mean(axis=0)
+    coverage_threshold = 0.9
+    excluded_symbols = coverage[coverage < coverage_threshold].index.tolist()
+    active_symbols = coverage[coverage >= coverage_threshold].index.tolist()
+    if not active_symbols:
+        raise ValueError("유니버스 종목들의 가격 커버리지가 너무 낮습니다.")
+
+    close_df = close_df[active_symbols]
+    tv_df = tv_df[active_symbols]
+    active_universe = [(symbol, name) for symbol, name in universe if symbol in active_symbols]
+    coverage_note = None
+    if excluded_symbols:
+        coverage_note = (
+            f"가격 커버리지 {coverage_threshold:.0%} 미만 종목 {len(excluded_symbols)}개 제외."
+        )
+
+    return close_df, tv_df, source, active_universe, coverage_note
 
 
 def _clean_float(value: float) -> float:
@@ -136,7 +153,12 @@ def run_monthly_universe_factor_backtest(
     symbols = [s for s, _ in uni]
     ext_start = _extended_start(user_start_date)
 
-    close_df, tv_df, data_source = _load_universe_close_matrix(uni, ext_start, user_end_date)
+    close_df, tv_df, data_source, active_universe, coverage_note = _load_universe_close_matrix(
+        uni,
+        ext_start,
+        user_end_date,
+    )
+    uni = active_universe
     dates = close_df.index.tolist()
     n = len(dates)
     n_sym = len(symbols)
@@ -338,6 +360,10 @@ def run_monthly_universe_factor_backtest(
         eq_s = eq_s / eq_s[0] * initial_capital
     if eq_bh[0] > 0:
         eq_bh = eq_bh / eq_bh[0] * initial_capital
+    strat_returns = pd.Series(eq_s).pct_change().fillna(0.0)
+    bh_returns = pd.Series(eq_bh).pct_change().fillna(0.0)
+    strategy_performance = build_performance_metrics(eq_s, strat_returns)
+    buy_hold_performance = build_performance_metrics(eq_bh, bh_returns)
 
     strategy_peak = np.maximum.accumulate(eq_s)
     strategy_dd = eq_s / np.maximum(strategy_peak, 1e-12) - 1.0
@@ -420,6 +446,8 @@ def run_monthly_universe_factor_backtest(
             f"개별 필터: 종목 종가가 {individual_trend_period}일선 위일 때만 편입하고, "
             "탈락한 Top K 슬롯은 현금으로 유지."
         )
+    if coverage_note:
+        filter_notes.append(coverage_note)
     filter_line = " ".join(filter_notes)
 
     return {
@@ -440,7 +468,9 @@ def run_monthly_universe_factor_backtest(
             "totalReturn": buy_hold_final / initial_capital - 1,
             "cagr": calculate_cagr(initial_capital, buy_hold_final, start_date, end_date),
             "mdd": calculate_mdd(pd.Series(bh_dd)),
+            **buy_hold_performance,
         },
+        **strategy_performance,
         "portfolioStats": portfolio_stats,
         "priceData": [],
         "equityCurve": equity_curve,

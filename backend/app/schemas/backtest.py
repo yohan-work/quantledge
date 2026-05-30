@@ -64,6 +64,35 @@ class BuyAndHoldSummary(BaseModel):
     totalReturn: float
     cagr: float
     mdd: float
+    annualizedVolatility: float
+    sharpeRatio: float
+    winRate: float
+    maxConsecutiveLossDays: int
+    recoveryDays: int | None = None
+
+
+class ValidationSegmentSummary(BaseModel):
+    startDate: str
+    endDate: str
+    finalCapital: float
+    totalReturn: float
+    cagr: float
+    mdd: float
+    annualizedVolatility: float
+    sharpeRatio: float
+    winRate: float
+    maxConsecutiveLossDays: int
+    recoveryDays: int | None = None
+    tradeCount: int
+
+
+class ValidationSummary(BaseModel):
+    enabled: bool = True
+    splitRatio: float
+    splitDate: str
+    inSample: ValidationSegmentSummary
+    outOfSample: ValidationSegmentSummary
+    note: str | None = None
 
 
 class PortfolioStats(BaseModel):
@@ -100,8 +129,14 @@ class BacktestResponse(BaseModel):
     totalReturn: float
     cagr: float
     mdd: float
+    annualizedVolatility: float
+    sharpeRatio: float
+    winRate: float
+    maxConsecutiveLossDays: int
+    recoveryDays: int | None = None
     tradeCount: int
     buyAndHold: BuyAndHoldSummary
+    validation: ValidationSummary | None = None
     portfolioStats: PortfolioStats | None = None
     dataSource: Literal["krx", "naver", "fdr"]
     dataQuality: DataQuality

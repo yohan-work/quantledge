@@ -25,6 +25,12 @@ def _as_bool(value) -> bool:
     return bool(value)
 
 
+def _clone_request(request: BacktestRequest, **updates) -> BacktestRequest:
+    if hasattr(request, "model_copy"):
+        return request.model_copy(update=updates)  # type: ignore[attr-defined]
+    return request.copy(update=updates)
+
+
 def _build_data_quality(price_data, request: BacktestRequest, period: int) -> dict:
     first_valid_ma_date = None
     if len(price_data) >= period:
@@ -55,7 +61,7 @@ def _cost_summary(cost_model) -> str:
     )
 
 
-def run_backtest(request: BacktestRequest) -> dict:
+def _run_backtest_core(request: BacktestRequest) -> dict:
     params = request.parameters or {}
     cost_model = parse_cost_model(params, commission_rate=request.commissionRate)
 
@@ -194,4 +200,74 @@ def run_backtest(request: BacktestRequest) -> dict:
     result["dataQuality"] = _build_data_quality(price_load.data, request, period)
     result["dataQuality"]["strategyNote"] = _cost_summary(cost_model)
     result["displayKind"] = "single"
+    return result
+
+
+def _segment_summary(result: dict, start_date: str, end_date: str) -> dict:
+    return {
+        "startDate": start_date,
+        "endDate": end_date,
+        "finalCapital": result["finalCapital"],
+        "totalReturn": result["totalReturn"],
+        "cagr": result["cagr"],
+        "mdd": result["mdd"],
+        "annualizedVolatility": result["annualizedVolatility"],
+        "sharpeRatio": result["sharpeRatio"],
+        "winRate": result["winRate"],
+        "maxConsecutiveLossDays": result["maxConsecutiveLossDays"],
+        "recoveryDays": result.get("recoveryDays"),
+        "tradeCount": result["tradeCount"],
+    }
+
+
+def _build_validation_summary(request: BacktestRequest, result: dict) -> dict | None:
+    params = request.parameters or {}
+    split_ratio = float(params.get("validationSplitRatio", params.get("walkForwardSplitRatio", 0.7)))
+    if not 0.5 <= split_ratio <= 0.9:
+        raise ValueError("validationSplitRatio는 0.5 이상 0.9 이하여야 합니다.")
+    equity_curve = result.get("equityCurve") or []
+    if len(equity_curve) < 10:
+        return None
+
+    split_index = int(len(equity_curve) * split_ratio)
+    if split_index < 1 or split_index >= len(equity_curve) - 1:
+        return None
+
+    split_date = str(equity_curve[split_index]["date"])
+    next_start_date = str(equity_curve[split_index + 1]["date"])
+    base_params = dict(request.parameters or {})
+    in_sample_request = _clone_request(
+        request,
+        endDate=split_date,
+        parameters=base_params,
+    )
+    out_sample_request = _clone_request(
+        request,
+        startDate=next_start_date,
+        parameters=base_params,
+    )
+
+    try:
+        in_sample_result = _run_backtest_core(in_sample_request)
+        out_sample_result = _run_backtest_core(out_sample_request)
+    except Exception as exc:
+        return None
+
+    return {
+        "enabled": True,
+        "splitRatio": split_ratio,
+        "splitDate": split_date,
+        "inSample": _segment_summary(in_sample_result, request.startDate, split_date),
+        "outOfSample": _segment_summary(out_sample_result, next_start_date, request.endDate),
+        "note": "같은 전략을 구간별로 다시 돌린 OOS 검증입니다. 파라미터 최적화는 포함하지 않았습니다.",
+    }
+
+
+def run_backtest(request: BacktestRequest) -> dict:
+    result = _run_backtest_core(request)
+    params = request.parameters or {}
+    if _as_bool(params.get("enableValidation", params.get("enable_validation", True))):
+        validation = _build_validation_summary(request, result)
+        if validation is not None:
+            result["validation"] = validation
     return result
