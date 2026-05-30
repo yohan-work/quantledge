@@ -47,6 +47,8 @@ def _finalize_price_frame(df: pd.DataFrame) -> pd.DataFrame:
     df = df.dropna(subset=["open", "high", "low", "close"])
     df = df.reset_index(names="date")
     df["date"] = df["date"].dt.strftime("%Y-%m-%d")
+    if df["date"].duplicated().any():
+        raise ValueError("price data contains duplicate dates")
 
     for column in NORMALIZED_COLUMNS:
         if column not in df.columns:
@@ -54,6 +56,23 @@ def _finalize_price_frame(df: pd.DataFrame) -> pd.DataFrame:
 
     if (df["tradingValue"] == 0).all() and "close" in df.columns and "volume" in df.columns:
         df["tradingValue"] = df["close"] * df["volume"]
+
+    numeric_cols = ["open", "high", "low", "close", "volume", "tradingValue"]
+    for column in numeric_cols:
+        df[column] = pd.to_numeric(df[column], errors="coerce")
+
+    if df[numeric_cols].isna().any().any():
+        raise ValueError("price data contains invalid numeric values")
+    if (df[["open", "high", "low", "close"]] <= 0).any().any():
+        raise ValueError("price data contains non-positive OHLC values")
+    if (df["volume"] < 0).any():
+        raise ValueError("price data contains negative volume")
+    if (df["tradingValue"] < 0).any():
+        raise ValueError("price data contains negative trading value")
+    if (df["high"] < df[["open", "close", "low"]].max(axis=1)).any():
+        raise ValueError("price data contains inconsistent high values")
+    if (df["low"] > df[["open", "close", "high"]].min(axis=1)).any():
+        raise ValueError("price data contains inconsistent low values")
 
     return df[["date", *NORMALIZED_COLUMNS]]
 

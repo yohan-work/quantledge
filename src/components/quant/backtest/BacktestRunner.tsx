@@ -619,6 +619,8 @@ export default function BacktestRunner() {
     marketTrendPeriod: 200,
     useIndividualTrendFilter: false,
     individualTrendPeriod: 120,
+    slippageRate: 0,
+    sellTaxRate: 0,
     initialCapital: 10000000,
     commissionRate: 0,
   });
@@ -649,6 +651,8 @@ export default function BacktestRunner() {
       "minUniverseTradingValue",
       "marketTrendPeriod",
       "individualTrendPeriod",
+      "slippageRate",
+      "sellTaxRate",
       "initialCapital",
       "commissionRate",
     ]);
@@ -781,6 +785,7 @@ export default function BacktestRunner() {
         topK: form.topK,
         rankingMode: form.rankingMode,
         fundamentalLagDays: form.fundamentalLagDays,
+        minAvgTradingValue: form.minUniverseTradingValue,
         universeMarket: form.universeMarket,
         universeSize: form.universeSize,
         minUniverseTradingValue: form.minUniverseTradingValue,
@@ -789,9 +794,15 @@ export default function BacktestRunner() {
         marketTrendPeriod: form.marketTrendPeriod,
         useIndividualTrendFilter: form.useIndividualTrendFilter,
         individualTrendPeriod: form.individualTrendPeriod,
+        slippageRate: form.slippageRate,
+        sellTaxRate: form.sellTaxRate,
       };
     }
-    return { period: form.period };
+    return {
+      period: form.period,
+      slippageRate: form.slippageRate,
+      sellTaxRate: form.sellTaxRate,
+    };
   };
 
   const runBacktest = async (event: FormEvent<HTMLFormElement>) => {
@@ -1081,6 +1092,7 @@ export default function BacktestRunner() {
                       updateField("minUniverseTradingValue", event.target.value)
                     }
                   />
+                  <small>유니버스 생성과 편입 종목 필터에 같은 값이 적용됩니다.</small>
                 </label>
                 <label>
                   <span>순위 방식</span>
@@ -1154,7 +1166,37 @@ export default function BacktestRunner() {
                 }
               />
             </label>
+            <label>
+              <span>슬리피지</span>
+              <input
+                type="number"
+                min="0"
+                max="0.05"
+                step="0.001"
+                value={form.slippageRate}
+                onChange={(event) =>
+                  updateField("slippageRate", event.target.value)
+                }
+              />
+            </label>
+            <label>
+              <span>매도세금</span>
+              <input
+                type="number"
+                min="0"
+                max="0.05"
+                step="0.001"
+                value={form.sellTaxRate}
+                onChange={(event) =>
+                  updateField("sellTaxRate", event.target.value)
+                }
+              />
+            </label>
           </div>
+          <p className="form-help">
+            거래비용은 수수료, 슬리피지, 매도세금을 각각 따로 넣을 수 있습니다. 실전과 최대한 가깝게 보려면
+            실제 계좌 수수료와 세금 체계를 입력하세요.
+          </p>
 
           {portfolioStrategyIds.has(form.strategyId) && (
             <div className="filter-panel">

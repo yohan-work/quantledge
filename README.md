@@ -40,6 +40,7 @@ Current implementation:
 - `pykrx` as the primary Korean stock data loader
 - `finance-datareader` fallback when the primary loader fails
 - pandas moving-average backtest with next-trading-day position shift
+- configurable trading cost model with commission, slippage, and optional sell-side tax inputs
 
 Backend:
 

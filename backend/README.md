@@ -80,6 +80,7 @@ npm run dev
 `low-per-quality` / `portfolio-rebalance` additionally accept:
 
 - `topK`: number of holdings
+- `minAvgTradingValue`: minimum 20-trading-day average trading value for the selected holdings
 - `rankingMode`: `momentum` (12-1 price momentum) or `value_quality` (pykrx PER/PBR/EPS/BPS with lag)
 - `fundamentalLagDays`: trading-day lag for the fundamental snapshot when using `value_quality` (default 20)
 - `universeMarket`: `KOSPI`, `KOSDAQ`, or `ALL` (default `KOSPI`)
@@ -90,6 +91,10 @@ npm run dev
 - `marketTrendPeriod`: moving-average period for the market filter (default 200)
 - `useIndividualTrendFilter`: when true, only ranks/holds candidates above their own moving average
 - `individualTrendPeriod`: moving-average period for individual candidates (default 120)
+- `slippageRate`: additional per-trade slippage rate
+- `sellTaxRate`: additional sell-side tax rate
+
+The top-level `commissionRate` field still applies to all strategies. `slippageRate` and `sellTaxRate` are optional and default to zero unless provided.
 
 Portfolio strategies no longer use a hard-coded sample universe. The backend builds the universe from KRX market-cap data at the requested start date or the nearest prior trading day, then applies the factor and rebalancing rules to that universe.
 

@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 
+from app.backtest.costs import CostModel
 from app.backtest.metrics import calculate_cagr, calculate_mdd
 
 
@@ -28,7 +29,7 @@ def run_regime_ma_backtest(
     filter_period: int,
     signal_period: int,
     initial_capital: float,
-    commission_rate: float,
+    cost_model: CostModel,
 ) -> dict:
     """장기 MA(추세 필터) 위에서만 단기 MA 규칙을 적용: 보유 iff 종가 > 장기MA and 종가 > 단기MA."""
     max_period = max(filter_period, signal_period)
@@ -53,7 +54,14 @@ def run_regime_ma_backtest(
     df["strategy_return"] = df["daily_return"] * df["position"]
     df["buy_hold_return"] = df["daily_return"]
     df["position_change"] = df["position"].diff().abs().fillna(0)
-    df["cost"] = df["position_change"] * commission_rate
+    df["previous_position"] = df["position"].shift(1).fillna(0).astype(int)
+    df["buy_trade"] = ((df["previous_position"] == 0) & (df["position"] == 1)).astype(int)
+    df["sell_trade"] = ((df["previous_position"] == 1) & (df["position"] == 0)).astype(int)
+    df["cost"] = (
+        df["position_change"] * cost_model.round_trip_rate
+        + df["buy_trade"] * cost_model.buy_tax_rate
+        + df["sell_trade"] * cost_model.sell_tax_rate
+    )
     df["strategy_return_after_cost"] = df["strategy_return"] - df["cost"]
     df["strategy_equity"] = initial_capital * (1 + df["strategy_return_after_cost"]).cumprod()
     df["buy_hold_equity"] = initial_capital * (1 + df["buy_hold_return"]).cumprod()
@@ -61,8 +69,6 @@ def run_regime_ma_backtest(
     df["strategy_drawdown"] = df["strategy_equity"] / df["strategy_peak"] - 1
     df["buy_hold_peak"] = df["buy_hold_equity"].cummax()
     df["buy_hold_drawdown"] = df["buy_hold_equity"] / df["buy_hold_peak"] - 1
-    df["previous_position"] = df["position"].shift(1).fillna(0).astype(int)
-
     conditions = [
         (df["previous_position"] == 0) & (df["position"] == 1),
         (df["previous_position"] == 1) & (df["position"] == 0),

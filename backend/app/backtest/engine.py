@@ -1,5 +1,6 @@
 from typing import cast
 
+from app.backtest.costs import parse_cost_model
 from app.data.price_loader import load_price_data
 from app.data.ticker_loader import normalize_symbol
 from app.data.universe_loader import UniverseMarket
@@ -44,12 +45,28 @@ def _build_data_quality(price_data, request: BacktestRequest, period: int) -> di
     }
 
 
+def _cost_summary(cost_model) -> str:
+    return (
+        "거래비용 모델: "
+        f"수수료 {cost_model.commission_rate:.4%}, "
+        f"슬리피지 {cost_model.slippage_rate:.4%}, "
+        f"매도세금 {cost_model.sell_tax_rate:.4%}, "
+        f"매수세금 {cost_model.buy_tax_rate:.4%}"
+    )
+
+
 def run_backtest(request: BacktestRequest) -> dict:
     params = request.parameters or {}
+    cost_model = parse_cost_model(params, commission_rate=request.commissionRate)
 
     if request.strategyId in {"low-per-quality", "portfolio-rebalance"}:
         top_k = int(params.get("topK", params.get("top_k", 5)))
-        min_tv = float(params.get("minAvgTradingValue", 5_000_000_000.0))
+        min_tv = float(
+            params.get(
+                "minAvgTradingValue",
+                params.get("minUniverseTradingValue", params.get("min_universe_trading_value", 5_000_000_000.0)),
+            )
+        )
         universe_size = int(params.get("universeSize", params.get("universe_size", 30)))
         if universe_size < 1:
             raise ValueError("universeSize는 1 이상이어야 합니다.")
@@ -88,8 +105,8 @@ def run_backtest(request: BacktestRequest) -> dict:
             user_start_date=request.startDate,
             user_end_date=request.endDate,
             initial_capital=request.initialCapital,
-            commission_rate=request.commissionRate,
             top_k=top_k,
+            cost_model=cost_model,
             min_avg_trading_value=min_tv,
             ranking_mode=cast(RankingMode, ranking_mode),
             fundamental_lag_days=fund_lag,
@@ -108,6 +125,9 @@ def run_backtest(request: BacktestRequest) -> dict:
                 result["strategyName"] = f"유니버스 월간 리밸런싱 (저PER·pykrx, 지연 {fund_lag}일)"
             else:
                 result["strategyName"] = "유니버스 월간 리밸런싱 (유동성·12-1 모멘텀)"
+        result["dataQuality"]["strategyNote"] = " ".join(
+            part for part in [result["dataQuality"].get("strategyNote"), _cost_summary(cost_model)] if part
+        )
         return result
 
     symbol = normalize_symbol(request.symbol)
@@ -123,11 +143,12 @@ def run_backtest(request: BacktestRequest) -> dict:
             short_period=short_p,
             long_period=long_p,
             initial_capital=request.initialCapital,
-            commission_rate=request.commissionRate,
+            cost_model=cost_model,
         )
         result["strategyId"] = request.strategyId
         result["dataSource"] = price_load.source
         result["dataQuality"] = _build_data_quality(price_load.data, request, long_p)
+        result["dataQuality"]["strategyNote"] = _cost_summary(cost_model)
         result.setdefault("displayKind", "single")
         return result
 
@@ -143,11 +164,12 @@ def run_backtest(request: BacktestRequest) -> dict:
             filter_period=filter_p,
             signal_period=signal_p,
             initial_capital=request.initialCapital,
-            commission_rate=request.commissionRate,
+            cost_model=cost_model,
         )
         result["strategyId"] = request.strategyId
         result["dataSource"] = price_load.source
         result["dataQuality"] = _build_data_quality(price_load.data, request, max_p)
+        result["dataQuality"]["strategyNote"] = _cost_summary(cost_model)
         result.setdefault("displayKind", "single")
         return result
 
@@ -165,10 +187,11 @@ def run_backtest(request: BacktestRequest) -> dict:
         symbol_name=request.symbolName,
         period=period,
         initial_capital=request.initialCapital,
-        commission_rate=request.commissionRate,
+        cost_model=cost_model,
     )
     result["strategyId"] = request.strategyId
     result["dataSource"] = price_load.source
     result["dataQuality"] = _build_data_quality(price_load.data, request, period)
+    result["dataQuality"]["strategyNote"] = _cost_summary(cost_model)
     result["displayKind"] = "single"
     return result

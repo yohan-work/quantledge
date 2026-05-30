@@ -17,6 +17,7 @@ import numpy as np
 import pandas as pd
 
 from app.backtest.metrics import calculate_cagr, calculate_mdd
+from app.backtest.costs import CostModel
 from app.data.fundamental_loader import build_fundamental_panel_asof, stack_metric_panel
 from app.data.price_loader import PriceLoadResult, load_index_price_data, load_price_data
 from app.data.universe_loader import UniverseMarket, load_krx_market_cap_universe
@@ -104,7 +105,7 @@ def run_monthly_universe_factor_backtest(
     user_start_date: str,
     user_end_date: str,
     initial_capital: float,
-    commission_rate: float,
+    cost_model: CostModel,
     universe: list[tuple[str, str]] | None = None,
     top_k: int = 5,
     liquidity_window: int = 20,
@@ -268,7 +269,13 @@ def run_monthly_universe_factor_backtest(
                         picked_names.append(f"현금 {top_k - len(picked)}/{top_k} 슬롯")
             turnover = float(np.sum(np.abs(w_new - w_prev)))
             if turnover > 0:
-                cost_drag = turnover * commission_rate
+                buy_turnover = float(np.sum(np.clip(w_new - w_prev, 0.0, None)))
+                sell_turnover = float(np.sum(np.clip(w_prev - w_new, 0.0, None)))
+                cost_drag = (
+                    turnover * cost_model.round_trip_rate
+                    + buy_turnover * cost_model.buy_tax_rate
+                    + sell_turnover * cost_model.sell_tax_rate
+                )
                 leg_trade_count += int(np.count_nonzero(np.abs(w_new - w_prev) > 1e-12))
                 w = w_new
                 w_prev = w_new.copy()
@@ -277,7 +284,13 @@ def run_monthly_universe_factor_backtest(
                 rebalanced = True
             elif not first_alloc and np.sum(w_new) > 0:
                 turnover = float(np.sum(np.abs(w_new - w_prev)))
-                cost_drag = turnover * commission_rate
+                buy_turnover = float(np.sum(np.clip(w_new - w_prev, 0.0, None)))
+                sell_turnover = float(np.sum(np.clip(w_prev - w_new, 0.0, None)))
+                cost_drag = (
+                    turnover * cost_model.round_trip_rate
+                    + buy_turnover * cost_model.buy_tax_rate
+                    + sell_turnover * cost_model.sell_tax_rate
+                )
                 leg_trade_count += int(np.count_nonzero(np.abs(w_new - w_prev) > 1e-12))
                 w = w_new
                 w_prev = w_new.copy()
