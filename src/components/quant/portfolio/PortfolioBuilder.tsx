@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { BacktestResult, BacktestRunRequest } from '@/lib/backtest/types';
 
 type RiskProfile = 'conservative' | 'balanced' | 'aggressive';
@@ -59,6 +59,7 @@ const strategyCandidates: StrategyCandidate[] = [
         period: 20,
         slippageRate: window.slippageRate,
         sellTaxRate: window.sellTaxRate,
+        enableValidation: false,
       },
     }),
   },
@@ -81,6 +82,7 @@ const strategyCandidates: StrategyCandidate[] = [
         period: 60,
         slippageRate: window.slippageRate,
         sellTaxRate: window.sellTaxRate,
+        enableValidation: false,
       },
     }),
   },
@@ -104,6 +106,7 @@ const strategyCandidates: StrategyCandidate[] = [
         longPeriod: 60,
         slippageRate: window.slippageRate,
         sellTaxRate: window.sellTaxRate,
+        enableValidation: false,
       },
     }),
   },
@@ -127,6 +130,7 @@ const strategyCandidates: StrategyCandidate[] = [
         signalPeriod: 20,
         slippageRate: window.slippageRate,
         sellTaxRate: window.sellTaxRate,
+        enableValidation: false,
       },
     }),
   },
@@ -160,6 +164,7 @@ const strategyCandidates: StrategyCandidate[] = [
         individualTrendPeriod: 120,
         slippageRate: window.slippageRate,
         sellTaxRate: window.sellTaxRate,
+        enableValidation: false,
       },
     }),
   },
@@ -194,6 +199,15 @@ const formatDays = (value: number | null | undefined) =>
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
 
+const serializeBacktestWindow = (window: BacktestWindow) =>
+  [
+    window.startDate,
+    window.endDate,
+    window.commissionRate,
+    window.slippageRate,
+    window.sellTaxRate,
+  ].join('|');
+
 const getErrorMessage = async (response: Response) => {
   try {
     const payload = await response.json();
@@ -222,69 +236,84 @@ export default function PortfolioBuilder() {
   const [candidateResults, setCandidateResults] = useState<Record<string, BacktestResult>>({});
   const [isLoadingResults, setIsLoadingResults] = useState(false);
   const [backtestError, setBacktestError] = useState<string | null>(null);
+  const candidateResultsCacheRef = useRef(new Map<string, Record<string, BacktestResult>>());
 
   useEffect(() => {
+    const cacheKey = serializeBacktestWindow(backtestWindow);
+    const cachedResults = candidateResultsCacheRef.current.get(cacheKey);
+    if (cachedResults) {
+      setCandidateResults(cachedResults);
+      setBacktestError(null);
+      setIsLoadingResults(false);
+      return;
+    }
+
     const controller = new AbortController();
     const timeoutId = window.setTimeout(() => controller.abort(), 240_000);
+    const debounceId = window.setTimeout(() => {
+      void (async () => {
+        setIsLoadingResults(true);
+        setBacktestError(null);
 
-    const run = async () => {
-      setIsLoadingResults(true);
-      setBacktestError(null);
+        try {
+          const settled = await Promise.allSettled(
+            strategyCandidates.map(async (candidate) => {
+              const request = candidate.buildRequest(backtestWindow);
+              const response = await fetch(`${apiBaseUrl}/api/backtest/run`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(request),
+                signal: controller.signal,
+              });
 
-      try {
-        const settled = await Promise.allSettled(
-          strategyCandidates.map(async (candidate) => {
-            const request = candidate.buildRequest(backtestWindow);
-            const response = await fetch(`${apiBaseUrl}/api/backtest/run`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(request),
-              signal: controller.signal,
-            });
+              if (!response.ok) {
+                throw new Error(await getErrorMessage(response));
+              }
 
-            if (!response.ok) {
-              throw new Error(await getErrorMessage(response));
-            }
+              return (await response.json()) as BacktestResult;
+            }),
+          );
 
-            return (await response.json()) as BacktestResult;
-          }),
-        );
-
-        if (controller.signal.aborted) {
-          return;
-        }
-
-        const nextResults: Record<string, BacktestResult> = {};
-        const failures: string[] = [];
-        settled.forEach((entry, index) => {
-          const candidate = strategyCandidates[index];
-          if (entry.status === 'fulfilled') {
-            nextResults[candidate.id] = entry.value;
-          } else {
-            failures.push(candidate.name);
+          if (controller.signal.aborted) {
+            return;
           }
-        });
 
-        setCandidateResults(nextResults);
-        setBacktestError(
-          failures.length > 0
-            ? `일부 전략 백테스트에 실패했습니다: ${failures.join(', ')}`
-            : null,
-        );
-      } catch (error) {
-        if (!controller.signal.aborted) {
-          setBacktestError(error instanceof Error ? error.message : '백테스트 결과를 불러오지 못했습니다.');
-        }
-      } finally {
-        if (!controller.signal.aborted) {
-          setIsLoadingResults(false);
-        }
-      }
-    };
+          const nextResults: Record<string, BacktestResult> = {};
+          const failures: string[] = [];
+          settled.forEach((entry, index) => {
+            const candidate = strategyCandidates[index];
+            if (entry.status === 'fulfilled') {
+              nextResults[candidate.id] = entry.value;
+            } else {
+              failures.push(candidate.name);
+            }
+          });
 
-    run();
+          setCandidateResults(nextResults);
+          if (failures.length === 0) {
+            candidateResultsCacheRef.current.set(cacheKey, nextResults);
+          } else {
+            candidateResultsCacheRef.current.delete(cacheKey);
+          }
+          setBacktestError(
+            failures.length > 0
+              ? `일부 전략 백테스트에 실패했습니다: ${failures.join(', ')}`
+              : null,
+          );
+        } catch (error) {
+          if (!controller.signal.aborted) {
+            setBacktestError(error instanceof Error ? error.message : '백테스트 결과를 불러오지 못했습니다.');
+          }
+        } finally {
+          if (!controller.signal.aborted) {
+            setIsLoadingResults(false);
+          }
+        }
+      })();
+    }, 350);
 
     return () => {
+      window.clearTimeout(debounceId);
       window.clearTimeout(timeoutId);
       controller.abort();
     };

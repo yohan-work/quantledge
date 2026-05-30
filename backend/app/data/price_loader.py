@@ -1,3 +1,4 @@
+from functools import lru_cache
 import os
 import tempfile
 from contextlib import redirect_stdout
@@ -24,6 +25,9 @@ SUPPORTED_PRICE_SOURCES = {"auto", "krx", "naver", "fdr"}
 class PriceLoadResult:
     source: str
     data: pd.DataFrame
+
+    def copy(self) -> "PriceLoadResult":
+        return PriceLoadResult(source=self.source, data=self.data.copy(deep=True))
 
 
 def _has_krx_credentials() -> bool:
@@ -163,7 +167,14 @@ def _source_sequence() -> list[str]:
     return ["naver", "fdr"]
 
 
-def load_price_data(symbol: str, start_date: str, end_date: str) -> PriceLoadResult:
+@lru_cache(maxsize=256)
+def _load_price_data_cached(
+    symbol: str,
+    start_date: str,
+    end_date: str,
+    source_mode: str,
+    has_krx_credentials: bool,
+) -> PriceLoadResult:
     errors: list[str] = []
     loaders = {
         "krx": load_price_data_from_pykrx_krx,
@@ -171,13 +182,33 @@ def load_price_data(symbol: str, start_date: str, end_date: str) -> PriceLoadRes
         "fdr": load_price_data_from_fdr,
     }
 
-    for source in _source_sequence():
+    if source_mode not in SUPPORTED_PRICE_SOURCES:
+        raise ValueError(
+            f"{PRICE_SOURCE_ENV} must be one of {sorted(SUPPORTED_PRICE_SOURCES)}. Current value: {source_mode}"
+        )
+
+    if source_mode == "auto":
+        sequence = ["krx", "naver", "fdr"] if has_krx_credentials else ["naver", "fdr"]
+    else:
+        sequence = [source_mode]
+
+    for source in sequence:
         try:
             return PriceLoadResult(source=source, data=loaders[source](symbol, start_date, end_date))
         except Exception as exc:
             errors.append(f"{source}: {exc}")
 
     raise RuntimeError("All price data sources failed. " + " | ".join(errors))
+
+
+def load_price_data(symbol: str, start_date: str, end_date: str) -> PriceLoadResult:
+    return _load_price_data_cached(
+        symbol,
+        start_date,
+        end_date,
+        os.getenv(PRICE_SOURCE_ENV, "auto").strip().lower(),
+        _has_krx_credentials(),
+    ).copy()
 
 
 INDEX_SYMBOLS = {
@@ -187,6 +218,11 @@ INDEX_SYMBOLS = {
 
 
 def load_index_price_data(index: str, start_date: str, end_date: str) -> PriceLoadResult:
+    return _load_index_price_data_cached(index.upper(), start_date, end_date).copy()
+
+
+@lru_cache(maxsize=64)
+def _load_index_price_data_cached(index: str, start_date: str, end_date: str) -> PriceLoadResult:
     stock = _import_pykrx_stock()
     index_code = INDEX_SYMBOLS.get(index.upper(), INDEX_SYMBOLS["KOSPI"])
     raw = stock.get_index_ohlcv_by_date(

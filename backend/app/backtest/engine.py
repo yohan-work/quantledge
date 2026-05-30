@@ -1,3 +1,7 @@
+from copy import deepcopy
+from functools import lru_cache
+import json
+import os
 from typing import cast
 
 from app.backtest.costs import parse_cost_model
@@ -61,7 +65,32 @@ def _cost_summary(cost_model) -> str:
     )
 
 
+def _request_cache_key(request: BacktestRequest) -> str:
+    payload = (
+        request.model_dump(mode="json")
+        if hasattr(request, "model_dump")
+        else request.dict()
+    )
+    cache_payload = {
+        "request": payload,
+        "price_source": os.getenv("BACKTEST_PRICE_SOURCE", "auto").strip().lower(),
+        "has_krx_credentials": _as_bool(os.getenv("KRX_ID")) and _as_bool(os.getenv("KRX_PW")),
+    }
+    return json.dumps(cache_payload, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+
+
+@lru_cache(maxsize=64)
+def _cached_run_backtest(cache_key: str) -> dict:
+    payload = json.loads(cache_key)
+    request = BacktestRequest(**payload["request"])
+    return _run_backtest_core_uncached(request)
+
+
 def _run_backtest_core(request: BacktestRequest) -> dict:
+    return deepcopy(_cached_run_backtest(_request_cache_key(request)))
+
+
+def _run_backtest_core_uncached(request: BacktestRequest) -> dict:
     params = request.parameters or {}
     cost_model = parse_cost_model(params, commission_rate=request.commissionRate)
 
@@ -266,7 +295,7 @@ def _build_validation_summary(request: BacktestRequest, result: dict) -> dict | 
 def run_backtest(request: BacktestRequest) -> dict:
     result = _run_backtest_core(request)
     params = request.parameters or {}
-    if _as_bool(params.get("enableValidation", params.get("enable_validation", True))):
+    if _as_bool(params.get("enableValidation", params.get("enable_validation", False))):
         validation = _build_validation_summary(request, result)
         if validation is not None:
             result["validation"] = validation

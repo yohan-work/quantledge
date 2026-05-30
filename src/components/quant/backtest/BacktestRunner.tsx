@@ -687,6 +687,8 @@ export default function BacktestRunner() {
     individualTrendPeriod: 120,
     slippageRate: 0,
     sellTaxRate: 0,
+    enableValidation: false,
+    validationSplitRatio: 0.7,
     initialCapital: 10000000,
     commissionRate: 0,
   });
@@ -719,6 +721,7 @@ export default function BacktestRunner() {
       "individualTrendPeriod",
       "slippageRate",
       "sellTaxRate",
+      "validationSplitRatio",
       "initialCapital",
       "commissionRate",
     ]);
@@ -862,12 +865,16 @@ export default function BacktestRunner() {
         individualTrendPeriod: form.individualTrendPeriod,
         slippageRate: form.slippageRate,
         sellTaxRate: form.sellTaxRate,
+        enableValidation: form.enableValidation,
+        validationSplitRatio: form.validationSplitRatio,
       };
     }
     return {
       period: form.period,
       slippageRate: form.slippageRate,
       sellTaxRate: form.sellTaxRate,
+      enableValidation: form.enableValidation,
+      validationSplitRatio: form.validationSplitRatio,
     };
   };
 
@@ -1283,6 +1290,34 @@ export default function BacktestRunner() {
                 }
               />
             </label>
+            <label className="checkbox-field">
+              <input
+                type="checkbox"
+                checked={form.enableValidation}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    enableValidation: event.target.checked,
+                  }))
+                }
+              />
+              <span>워크포워드 / OOS 검증 사용</span>
+            </label>
+            {form.enableValidation && (
+              <label>
+                <span>OOS 분할 비율</span>
+                <input
+                  type="number"
+                  min="0.5"
+                  max="0.9"
+                  step="0.05"
+                  value={form.validationSplitRatio}
+                  onChange={(event) =>
+                    updateField("validationSplitRatio", event.target.value)
+                  }
+                />
+              </label>
+            )}
           </div>
           <p className="form-help">
             거래비용은 수수료, 슬리피지, 매도세금을 각각 따로 넣을 수 있습니다. 실전과 최대한 가깝게 보려면

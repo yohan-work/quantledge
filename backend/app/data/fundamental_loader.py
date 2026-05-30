@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from functools import lru_cache
 import os
 import tempfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -33,6 +34,11 @@ def load_fundamental_series(symbol: str, start_date: str, end_date: str) -> pd.D
     종목별 일자 인덱스 투자지표. 인덱스는 ISO 날짜 문자열.
     KRX 스냅샷에 없는 지표는 컬럼만 두고 NaN.
     """
+    return _load_fundamental_series_cached(symbol, start_date, end_date).copy(deep=True)
+
+
+@lru_cache(maxsize=1024)
+def _load_fundamental_series_cached(symbol: str, start_date: str, end_date: str) -> pd.DataFrame:
     stock = _import_pykrx_stock()
     raw = stock.get_market_fundamental_by_date(
         to_pykrx_date(start_date),

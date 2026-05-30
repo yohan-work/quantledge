@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from functools import lru_cache
 from contextlib import redirect_stdout
 from datetime import datetime, timedelta
 from importlib import import_module
@@ -66,6 +67,23 @@ def load_krx_market_cap_universe(
     if market not in ("KOSPI", "KOSDAQ", "ALL"):
         raise ValueError("universeMarket은 KOSPI, KOSDAQ, ALL 중 하나여야 합니다.")
 
+    tickers, label = _load_krx_market_cap_universe_cached(
+        reference_date=reference_date,
+        market=market,
+        top_n=top_n,
+        min_trading_value=min_trading_value,
+    )
+    return list(tickers), label
+
+
+@lru_cache(maxsize=64)
+def _load_krx_market_cap_universe_cached(
+    *,
+    reference_date: str,
+    market: UniverseMarket,
+    top_n: int,
+    min_trading_value: float,
+) -> tuple[list[tuple[str, str]], str]:
     stock = _import_pykrx_stock()
     last_error: Exception | None = None
 

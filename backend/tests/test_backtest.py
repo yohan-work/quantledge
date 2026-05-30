@@ -6,7 +6,7 @@ from unittest.mock import patch
 import pandas as pd
 
 from app.backtest.costs import parse_cost_model
-from app.backtest.engine import run_backtest
+from app.backtest.engine import _cached_run_backtest, run_backtest
 from app.backtest.performance import build_performance_metrics
 from app.data.price_loader import PriceLoadResult, _finalize_price_frame
 from app.schemas.backtest import BacktestRequest
@@ -59,6 +59,9 @@ class PerformanceMetricTests(unittest.TestCase):
 
 
 class BacktestEngineTests(unittest.TestCase):
+    def setUp(self) -> None:
+        _cached_run_backtest.cache_clear()
+
     def _single_result(self) -> dict:
         return {
             "strategyId": "ma",
@@ -286,6 +289,41 @@ class BacktestEngineTests(unittest.TestCase):
         self.assertIn("outOfSample", result["validation"])
         self.assertEqual(result["validation"]["inSample"]["startDate"], "2024-01-02")
         self.assertEqual(result["validation"]["outOfSample"]["startDate"], "2024-01-12")
+
+    def test_run_backtest_reuses_cached_result_for_identical_request(self) -> None:
+        price_frame = pd.DataFrame(
+            {
+                "date": ["2024-01-02", "2024-01-03", "2024-01-04"],
+                "open": [100.0, 101.0, 102.0],
+                "high": [110.0, 111.0, 112.0],
+                "low": [90.0, 91.0, 92.0],
+                "close": [100.0, 101.0, 102.0],
+                "volume": [1000.0, 1100.0, 1200.0],
+                "tradingValue": [100000.0, 111100.0, 122400.0],
+            }
+        )
+        request = BacktestRequest(
+            strategyId="ma20",
+            symbol="005930",
+            symbolName="삼성전자",
+            startDate="2024-01-02",
+            endDate="2024-01-04",
+            initialCapital=1_000_000,
+            commissionRate=0.0007,
+            parameters={"period": 20, "enableValidation": False},
+        )
+
+        with patch("app.backtest.engine.load_price_data") as load_price_data_mock, patch(
+            "app.backtest.engine.run_moving_average_backtest"
+        ) as strategy_mock:
+            load_price_data_mock.return_value = PriceLoadResult(source="krx", data=price_frame)
+            strategy_mock.return_value = self._single_result()
+
+            first_result = run_backtest(request)
+            second_result = run_backtest(request)
+
+        self.assertEqual(strategy_mock.call_count, 1)
+        self.assertEqual(first_result["strategyName"], second_result["strategyName"])
 
 
 if __name__ == "__main__":
